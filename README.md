@@ -1,7 +1,9 @@
 [![abaplint](https://app.abaplint.org/badges/sapmentors/abap2xlsx)](https://app.abaplint.org/project/sapmentors/abap2xlsx)
 
-abap2xlsx
+abap2xlsx_no_ixml
 =========
+Partially removed ixml, writing xml data directly to stream.
+Needs testing
 
 Generate your professional Excel spreadsheet from ABAP
 
