@@ -49,11 +49,46 @@ class zcl_excel_aunit definition
       end of en_clsname.
 
     class-data clsname type tv_clsname.
-endclass.
+ENDCLASS.
 
 
 
-class zcl_excel_aunit implementation.
+CLASS ZCL_EXCEL_AUNIT IMPLEMENTATION.
+
+
+  method assert_differs.
+    check clsname = en_clsname-new or clsname = en_clsname-old.
+
+    call method (clsname)=>assert_differs
+      exporting
+        exp              = exp
+        act              = act
+        msg              = msg
+        level            = level
+        tol              = tol
+        quit             = quit
+      receiving
+        assertion_failed = assertion_failed.
+
+  endmethod.
+
+
+  method assert_equals.
+    check clsname = en_clsname-new or clsname = en_clsname-old.
+
+    call method (clsname)=>assert_equals
+      exporting
+        exp                  = exp
+        act                  = act
+        msg                  = msg
+        level                = level
+        tol                  = tol
+        quit                 = quit
+        ignore_hash_sequence = ignore_hash_sequence
+      receiving
+        assertion_failed     = assertion_failed.
+  endmethod.
+
 
   method class_constructor.
     " Let see >=7.02
@@ -74,37 +109,6 @@ class zcl_excel_aunit implementation.
 
   endmethod.
 
-  method assert_differs.
-    check clsname = en_clsname-new or clsname = en_clsname-old.
-
-    call method (clsname)=>assert_differs
-      exporting
-        exp              = exp
-        act              = act
-        msg              = msg
-        level            = level
-        tol              = tol
-        quit             = quit
-      receiving
-        assertion_failed = assertion_failed.
-
-  endmethod.
-
-  method assert_equals.
-    check clsname = en_clsname-new or clsname = en_clsname-old.
-
-    call method (clsname)=>assert_equals
-      exporting
-        exp                  = exp
-        act                  = act
-        msg                  = msg
-        level                = level
-        tol                  = tol
-        quit                 = quit
-        ignore_hash_sequence = ignore_hash_sequence
-      receiving
-        assertion_failed     = assertion_failed.
-  endmethod.
 
   method fail.
     check clsname = en_clsname-new or clsname = en_clsname-old.
@@ -117,4 +121,4 @@ class zcl_excel_aunit implementation.
         detail = detail.
 
   endmethod.
-endclass.
+ENDCLASS.

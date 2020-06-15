@@ -18,12 +18,6 @@
      <LANGU>E</LANGU>
      <DESCRIPT>Fill internal layout tables</DESCRIPT>
     </SEOCOMPOTX>
-    <SEOCOMPOTX>
-     <CLSNAME>ZCL_EXCEL_CONVERTER_SALV_TABLE</CLSNAME>
-     <CMPNAME>LOAD_DATA</CMPNAME>
-     <LANGU>I</LANGU>
-     <DESCRIPT>Fill internal layout tables</DESCRIPT>
-    </SEOCOMPOTX>
    </DESCRIPTIONS>
   </asx:values>
  </asx:abap>

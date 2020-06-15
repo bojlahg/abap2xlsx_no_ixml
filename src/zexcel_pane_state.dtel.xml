@@ -10,15 +10,6 @@
     <DTELMASTER>R</DTELMASTER>
     <REFKIND>D</REFKIND>
    </DD04V>
-   <I18N_LANGS>
-    <LANGU>R</LANGU>
-   </I18N_LANGS>
-   <DD04_TEXTS>
-    <item>
-     <DDLANGUAGE>R</DDLANGUAGE>
-     <DDTEXT>Pane state</DDTEXT>
-    </item>
-   </DD04_TEXTS>
   </asx:values>
  </asx:abap>
 </abapGit>

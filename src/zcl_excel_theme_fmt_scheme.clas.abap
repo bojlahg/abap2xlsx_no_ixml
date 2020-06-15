@@ -4,13 +4,15 @@ class ZCL_EXCEL_THEME_FMT_SCHEME definition
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME_FMT_SCHEME
+*"* do not include other source files here!!!
 
   methods LOAD
     importing
       !IO_FMT_SCHEME type ref to IF_IXML_ELEMENT .
   methods BUILD_XML
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
 protected section.
 private section.
 
@@ -26,24 +28,13 @@ ENDCLASS.
 CLASS ZCL_EXCEL_THEME_FMT_SCHEME IMPLEMENTATION.
 
 
-method build_xml.
-    data: lo_xml type ref to cl_xml_document.
-    data: lo_node type ref to if_ixml_node.
-    data: lo_elements type ref to if_ixml_element.
-    check io_document is bound.
-    lo_elements ?= io_document->find_from_name_ns( name = zcl_excel_theme=>c_theme_elements ).
-    if lo_elements is bound.
-
-      if fmt_scheme is initial.
-        create object lo_xml.
-        lo_xml->parse_string( get_default_fmt( ) ).
-        lo_node = lo_xml->get_first_node( ).
-        lo_elements->append_child( new_child = lo_node ).
-      else.
-        lo_elements->append_child( new_child = fmt_scheme ).
-      endif.
-    endif.
-  endmethod.                    "build_xml
+METHOD build_xml.
+  IF fmt_scheme IS INITIAL.
+    lo_ostream->write_string( get_default_fmt( ) ).
+  ELSE.
+    fmt_scheme->render( ostream = lo_ostream recursive = abap_true ).
+  ENDIF.
+ENDMETHOD.                    "build_xml
 
 
 method get_default_fmt.

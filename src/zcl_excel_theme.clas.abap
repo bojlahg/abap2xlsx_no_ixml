@@ -3,6 +3,8 @@ class ZCL_EXCEL_THEME definition
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME
+*"* do not include other source files here!!!
 
   constants C_THEME_ELEMENTS type STRING value 'themeElements'. "#EC NOTEXT
   constants C_THEME_OBJECT_DEF type STRING value 'objectDefaults'. "#EC NOTEXT
@@ -20,8 +22,8 @@ public section.
     importing
       value(IO_THEME_XML) type ref to IF_IXML_DOCUMENT .
   methods WRITE_THEME
-    returning
-      value(RV_XSTRING) type XSTRING .
+    importing
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
   methods SET_COLOR
     importing
       value(IV_TYPE) type STRING
@@ -63,6 +65,9 @@ public section.
   methods SET_THEME_NAME
     importing
       value(IV_NAME) type STRING .
+  methods GET_NAME
+    returning
+      value(RVAL) type STRING .
 protected section.
 
   data ELEMENTS type ref to ZCL_EXCEL_THEME_ELEMENTS .
@@ -88,6 +93,11 @@ method constructor.
     create object extclrschemelst.
     create object extlst.
   endmethod.                    "class_constructor
+
+
+method GET_NAME.
+  rval = me->name.
+endmethod.
 
 
 method read_theme.
@@ -193,41 +203,19 @@ method set_theme_name.
   endmethod.
 
 
-method write_theme.
-    data:   lo_ixml           type ref to if_ixml,
-            lo_element_root   type ref to if_ixml_element,
-            lo_encoding       type ref to if_ixml_encoding.
-    data: lo_streamfactory  TYPE REF TO if_ixml_stream_factory.
-    data: lo_ostream TYPE REF TO if_ixml_ostream.
-    data: lo_renderer TYPE REF TO if_ixml_renderer.
-    data: lo_document type ref to if_ixml_document.
-    lo_ixml = cl_ixml=>create( ).
+METHOD write_theme.
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
-    lo_encoding = lo_ixml->create_encoding( byte_order = if_ixml_encoding=>co_platform_endian
-                                            character_set = 'UTF-8' ).
-    lo_document = lo_ixml->create_document( ).
-    lo_document->set_encoding( lo_encoding ).
-    lo_document->set_standalone( abap_true ).
-    lo_document->set_namespace_prefix( prefix = 'a' ).
+  lo_ostream->write_string( |<{ c_theme_prefix }:{ c_theme }| ).
+  lo_ostream->write_string( | { c_theme_xmlns }="{ c_theme_xmlns_val }"| ).
+  lo_ostream->write_string( | { c_theme_name }="{ name }">| ).
 
-    lo_element_root = lo_document->create_simple_element_ns( prefix = c_theme_prefix
-                                                             name   = c_theme
-                                                            parent = lo_document
-                                                            ).
-    lo_element_root->set_attribute_ns( name  = c_theme_xmlns
-                                       value = c_theme_xmlns_val ).
-    lo_element_root->set_attribute_ns( name  = c_theme_name
-                                       value = name ).
+  elements->build_xml( lo_ostream ).
+  objectdefaults->build_xml( lo_ostream ).
+  extclrschemelst->build_xml( lo_ostream ).
+  extlst->build_xml( lo_ostream ).
 
-    elements->build_xml( io_document = lo_document ).
-    objectdefaults->build_xml( io_document = lo_document ).
-    extclrschemelst->build_xml( io_document = lo_document ).
-    extlst->build_xml( io_document = lo_document ).
+  lo_ostream->write_string( |</{ c_theme_prefix }:{ c_theme }>| ).
 
-    lo_streamfactory = lo_ixml->create_stream_factory( ).
-    lo_ostream = lo_streamfactory->create_ostream_xstring( string = rv_xstring ).
-    lo_renderer = lo_ixml->create_renderer( ostream  = lo_ostream document = lo_document ).
-    lo_renderer->render( ).
-
-  endmethod.                    "write_theme
+ENDMETHOD.                    "write_theme
 ENDCLASS.

@@ -4,13 +4,15 @@ class ZCL_EXCEL_THEME_OBJECTDEFAULTS definition
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME_OBJECTDEFAULTS
+*"* do not include other source files here!!!
 
   methods LOAD
     importing
       !IO_OBJECT_DEF type ref to IF_IXML_ELEMENT .
   methods BUILD_XML
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
 protected section.
 private section.
 
@@ -22,20 +24,13 @@ ENDCLASS.
 CLASS ZCL_EXCEL_THEME_OBJECTDEFAULTS IMPLEMENTATION.
 
 
-method build_xml.
-    data: lo_theme type ref to if_ixml_element.
-    data: lo_theme_objdef type ref to if_ixml_element.
-    check io_document is bound.
-    lo_theme ?= io_document->get_root_element( ).
-    check lo_theme is bound.
-    if objectdefaults is initial.
-      lo_theme_objdef ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix
-                                                                name   = zcl_excel_theme=>c_theme_object_def
-                                                                parent = lo_theme ).
-    else.
-      lo_theme->append_child( new_child = objectdefaults ).
-    endif.
-  endmethod.                    "build_xml
+METHOD build_xml.
+  IF objectdefaults IS INITIAL.
+    lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ zcl_excel_theme=>c_theme_object_def }/>| ).
+  ELSE.
+    objectdefaults->render( ostream = lo_ostream  recursive = abap_true ).
+  ENDIF.
+ENDMETHOD.                    "build_xml
 
 
 method load.

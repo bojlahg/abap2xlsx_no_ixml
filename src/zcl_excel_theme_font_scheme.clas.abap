@@ -4,6 +4,8 @@ class ZCL_EXCEL_THEME_FONT_SCHEME definition
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME_FONT_SCHEME
+*"* do not include other source files here!!!
 
   types:
     begin of t_font,
@@ -55,7 +57,7 @@ public section.
       value(IV_NAME) type STRING .
   methods BUILD_XML
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
   methods MODIFY_FONT
     importing
       value(IV_TYPE) type STRING
@@ -105,133 +107,139 @@ ENDCLASS.
 CLASS ZCL_EXCEL_THEME_FONT_SCHEME IMPLEMENTATION.
 
 
-method build_xml.
-    data: lo_scheme_element type ref to if_ixml_element.
-    data: lo_font type ref to if_ixml_element.
-    data: lo_latin type ref to if_ixml_element.
-    data: lo_ea type ref to if_ixml_element.
-    data: lo_cs type ref to if_ixml_element.
-    data: lo_major type ref to if_ixml_element.
-    data: lo_minor type ref to if_ixml_element.
-    data: lo_elements type ref to if_ixml_element.
-    field-symbols: <font> type t_font.
-    check io_document is bound.
-    lo_elements ?= io_document->find_from_name_ns( name = zcl_excel_theme=>c_theme_elements ).
-    if lo_elements is bound.
-      lo_scheme_element ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = zcl_excel_theme_elements=>c_font_scheme
-                                                               parent = lo_elements ).
-      lo_scheme_element->set_attribute( name = c_name value = font_scheme-name ).
+METHOD build_xml.
+  FIELD-SYMBOLS: <font> TYPE t_font.
 
-      lo_major ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_major
-                                                      parent = lo_scheme_element ).
-      if lo_major is bound.
-        lo_latin ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_latin
-                                                         parent = lo_major ).
-        lo_latin->set_attribute( name = c_typeface value = font_scheme-major-latin-typeface ).
-        if font_scheme-major-latin-panose is not initial.
-          lo_latin->set_attribute( name = c_panose value = font_scheme-major-latin-panose ).
-        endif.
-        if font_scheme-major-latin-pitchfamily is not initial.
-          lo_latin->set_attribute( name = c_pitchfamily value = font_scheme-major-latin-pitchfamily ).
-        endif.
-        if font_scheme-major-latin-charset is not initial.
-          lo_latin->set_attribute( name = c_charset value = font_scheme-major-latin-charset ).
-        endif.
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ zcl_excel_theme_elements=>c_font_scheme }| ).
+  lo_ostream->write_string( | { c_name }="{ font_scheme-name }">| ).
 
-        lo_ea ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_ea
-                                                         parent = lo_major ).
-        lo_ea->set_attribute( name = c_typeface value = font_scheme-major-ea-typeface ).
-        if font_scheme-major-ea-panose is not initial.
-          lo_ea->set_attribute( name = c_panose value = font_scheme-major-ea-panose ).
-        endif.
-        if font_scheme-major-ea-pitchfamily is not initial.
-          lo_ea->set_attribute( name = c_pitchfamily value = font_scheme-major-ea-pitchfamily ).
-        endif.
-        if font_scheme-major-ea-charset is not initial.
-          lo_ea->set_attribute( name = c_charset value = font_scheme-major-ea-charset ).
-        endif.
-
-        lo_cs ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_cs
-                                                      parent = lo_major ).
-        lo_cs->set_attribute( name = c_typeface value = font_scheme-major-cs-typeface ).
-        if font_scheme-major-cs-panose is not initial.
-          lo_cs->set_attribute( name = c_panose value = font_scheme-major-cs-panose ).
-        endif.
-        if font_scheme-major-cs-pitchfamily is not initial.
-          lo_cs->set_attribute( name = c_pitchfamily value = font_scheme-major-cs-pitchfamily ).
-        endif.
-        if font_scheme-major-cs-charset is not initial.
-          lo_cs->set_attribute( name = c_charset value = font_scheme-major-cs-charset ).
-        endif.
-
-        loop at font_scheme-major-fonts assigning <font>.
-          if <font>-script is not initial and <font>-typeface is not initial.
-            clear lo_font.
-            lo_font ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_font
-                                                           parent = lo_major ).
-            lo_font->set_attribute( name = c_script value = <font>-script ).
-            lo_font->set_attribute( name = c_typeface value = <font>-typeface ).
-          endif.
-        endloop.
-        clear: lo_latin, lo_ea, lo_cs, lo_font.
-      endif.
-
-      lo_minor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_minor
-                                                      parent = lo_scheme_element ).
-      if lo_minor is bound.
-        lo_latin ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_latin
-                                                         parent = lo_minor ).
-        lo_latin->set_attribute( name = c_typeface value = font_scheme-minor-latin-typeface ).
-        if font_scheme-minor-latin-panose is not initial.
-          lo_latin->set_attribute( name = c_panose value = font_scheme-minor-latin-panose ).
-        endif.
-        if font_scheme-minor-latin-pitchfamily is not initial.
-          lo_latin->set_attribute( name = c_pitchfamily value = font_scheme-minor-latin-pitchfamily ).
-        endif.
-        if font_scheme-minor-latin-charset is not initial.
-          lo_latin->set_attribute( name = c_charset value = font_scheme-minor-latin-charset ).
-        endif.
-
-        lo_ea ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_ea
-                                                         parent = lo_minor ).
-        lo_ea->set_attribute( name = c_typeface value = font_scheme-minor-ea-typeface ).
-        if font_scheme-minor-ea-panose is not initial.
-          lo_ea->set_attribute( name = c_panose value = font_scheme-minor-ea-panose ).
-        endif.
-        if font_scheme-minor-ea-pitchfamily is not initial.
-          lo_ea->set_attribute( name = c_pitchfamily value = font_scheme-minor-ea-pitchfamily ).
-        endif.
-        if font_scheme-minor-ea-charset is not initial.
-          lo_ea->set_attribute( name = c_charset value = font_scheme-minor-ea-charset ).
-        endif.
-
-        lo_cs ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_cs
-                                                      parent = lo_minor ).
-        lo_cs->set_attribute( name = c_typeface value = font_scheme-minor-cs-typeface ).
-        if font_scheme-minor-cs-panose is not initial.
-          lo_cs->set_attribute( name = c_panose value = font_scheme-minor-cs-panose ).
-        endif.
-        if font_scheme-minor-cs-pitchfamily is not initial.
-          lo_cs->set_attribute( name = c_pitchfamily value = font_scheme-minor-cs-pitchfamily ).
-        endif.
-        if font_scheme-minor-cs-charset is not initial.
-          lo_cs->set_attribute( name = c_charset value = font_scheme-minor-cs-charset ).
-        endif.
-
-        loop at font_scheme-minor-fonts assigning <font>.
-          if <font>-script is not initial and <font>-typeface is not initial.
-            clear lo_font.
-            lo_font ?=  io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_font
-                                                           parent = lo_minor ).
-            lo_font->set_attribute( name = c_script value = <font>-script ).
-            lo_font->set_attribute( name = c_typeface value = <font>-typeface ).
-          endif.
-        endloop.
-      endif.
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_major }>| ).
 
 
-    endif.
-  endmethod.                    "build_xml
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_latin }| ).
+
+  lo_ostream->write_string( | { c_typeface }="{ font_scheme-major-latin-typeface }"| ).
+
+  IF font_scheme-major-latin-panose IS NOT INITIAL.
+    lo_ostream->write_string( | { c_panose }="{ font_scheme-major-latin-panose }"| ).
+  ENDIF.
+  IF font_scheme-major-latin-pitchfamily IS NOT INITIAL.
+    lo_ostream->write_string( | { c_pitchfamily }="{ font_scheme-major-latin-pitchfamily }"| ).
+  ENDIF.
+  IF font_scheme-major-latin-charset IS NOT INITIAL.
+    lo_ostream->write_string( | { c_charset }="{ font_scheme-major-latin-charset }"| ).
+  ENDIF.
+
+  lo_ostream->write_string( |/>| ).
+
+
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_ea }| ).
+
+  lo_ostream->write_string( | { c_typeface }="{ font_scheme-major-ea-typeface }"| ).
+
+  IF font_scheme-major-ea-panose IS NOT INITIAL.
+    lo_ostream->write_string( | { c_panose }="{ font_scheme-major-ea-panose }"| ).
+  ENDIF.
+  IF font_scheme-major-ea-pitchfamily IS NOT INITIAL.
+    lo_ostream->write_string( | { c_pitchfamily }="{ font_scheme-major-ea-pitchfamily }"| ).
+  ENDIF.
+  IF font_scheme-major-ea-charset IS NOT INITIAL.
+    lo_ostream->write_string( | { c_charset }="{ font_scheme-major-ea-charset }"| ).
+  ENDIF.
+
+  lo_ostream->write_string( |/>| ).
+
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_cs }| ).
+
+  lo_ostream->write_string( | { c_typeface }="{ font_scheme-major-cs-typeface }"| ).
+
+  IF font_scheme-major-cs-panose IS NOT INITIAL.
+    lo_ostream->write_string( | { c_panose }="{ font_scheme-major-cs-panose }"| ).
+  ENDIF.
+  IF font_scheme-major-cs-pitchfamily IS NOT INITIAL.
+    lo_ostream->write_string( | { c_pitchfamily }="{ font_scheme-major-cs-pitchfamily }"| ).
+  ENDIF.
+  IF font_scheme-major-cs-charset IS NOT INITIAL.
+    lo_ostream->write_string( | { c_charset }="{ font_scheme-major-ea-charset }"| ).
+  ENDIF.
+
+  lo_ostream->write_string( |/>| ).
+
+  LOOP AT font_scheme-major-fonts ASSIGNING <font>.
+    IF <font>-script IS NOT INITIAL AND <font>-typeface IS NOT INITIAL.
+      lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_font }| ).
+      lo_ostream->write_string( | { c_script }="{ <font>-script }"| ).
+      lo_ostream->write_string( | { c_typeface }="{ <font>-typeface }"/>| ).
+    ENDIF.
+  ENDLOOP.
+
+  lo_ostream->write_string( |</{ zcl_excel_theme=>c_theme_prefix }:{ c_major }>| ).
+
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_minor }>| ).
+
+
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_latin }| ).
+
+  lo_ostream->write_string( | { c_typeface }="{ font_scheme-minor-latin-typeface }"| ).
+
+  IF font_scheme-minor-latin-panose IS NOT INITIAL.
+    lo_ostream->write_string( | { c_panose }="{ font_scheme-minor-latin-panose }"| ).
+  ENDIF.
+  IF font_scheme-minor-latin-pitchfamily IS NOT INITIAL.
+    lo_ostream->write_string( | { c_pitchfamily }="{ font_scheme-minor-latin-pitchfamily }"| ).
+  ENDIF.
+  IF font_scheme-minor-latin-charset IS NOT INITIAL.
+    lo_ostream->write_string( | { c_charset }="{ font_scheme-minor-latin-charset }"| ).
+  ENDIF.
+
+  lo_ostream->write_string( |/>| ).
+
+
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_ea }| ).
+
+  lo_ostream->write_string( | { c_typeface }="{ font_scheme-minor-ea-typeface }"| ).
+
+  IF font_scheme-minor-ea-panose IS NOT INITIAL.
+    lo_ostream->write_string( | { c_panose }="{ font_scheme-minor-ea-panose }"| ).
+  ENDIF.
+  IF font_scheme-minor-ea-pitchfamily IS NOT INITIAL.
+    lo_ostream->write_string( | { c_pitchfamily }="{ font_scheme-minor-ea-pitchfamily }"| ).
+  ENDIF.
+  IF font_scheme-minor-ea-charset IS NOT INITIAL.
+    lo_ostream->write_string( | { c_charset }="{ font_scheme-minor-ea-charset }"| ).
+  ENDIF.
+
+  lo_ostream->write_string( |/>| ).
+
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_cs }| ).
+
+  lo_ostream->write_string( | { c_typeface }="{ font_scheme-minor-cs-typeface }"| ).
+
+  IF font_scheme-minor-cs-panose IS NOT INITIAL.
+    lo_ostream->write_string( | { c_panose }="{ font_scheme-minor-cs-panose }"| ).
+  ENDIF.
+  IF font_scheme-minor-cs-pitchfamily IS NOT INITIAL.
+    lo_ostream->write_string( | { c_pitchfamily }="{ font_scheme-minor-cs-pitchfamily }"| ).
+  ENDIF.
+  IF font_scheme-minor-cs-charset IS NOT INITIAL.
+    lo_ostream->write_string( | { c_charset }="{ font_scheme-minor-ea-charset }"| ).
+  ENDIF.
+
+  lo_ostream->write_string( |/>| ).
+
+  LOOP AT font_scheme-minor-fonts ASSIGNING <font>.
+    IF <font>-script IS NOT INITIAL AND <font>-typeface IS NOT INITIAL.
+      lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_font }| ).
+      lo_ostream->write_string( | { c_script }="{ <font>-script }"| ).
+      lo_ostream->write_string( | { c_typeface }="{ <font>-typeface }"/>| ).
+    ENDIF.
+  ENDLOOP.
+
+  lo_ostream->write_string( |</{ zcl_excel_theme=>c_theme_prefix }:{ c_minor }>| ).
+
+  lo_ostream->write_string( |</{ zcl_excel_theme=>c_theme_prefix }:{ zcl_excel_theme_elements=>c_font_scheme }>| ).
+
+ENDMETHOD.                    "build_xml
 
 
 method constructor.

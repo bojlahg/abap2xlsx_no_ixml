@@ -1,10 +1,11 @@
 class ZCL_EXCEL_WRITER_HUGE_FILE definition
   public
   inheriting from ZCL_EXCEL_WRITER_2007
-  final
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_WRITER_HUGE_FILE
+*"* do not include other source files here!!!
 
   types:
     BEGIN OF ty_cell,
@@ -23,6 +24,8 @@ public section.
       !I_ROW type I
       !I_INDEX type I .
 protected section.
+*"* protected components of class ZCL_EXCEL_WRITER_HUGE_FILE
+*"* do not include other source files here!!!
 
   methods CREATE_XL_SHAREDSTRINGS
     redefinition .

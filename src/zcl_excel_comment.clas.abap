@@ -4,6 +4,8 @@ class ZCL_EXCEL_COMMENT definition
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_COMMENT
+*"* do not include other source files here!!!
   type-pools ABAP .
 
   methods CONSTRUCTOR .
@@ -19,6 +21,10 @@ public section.
   methods GET_TEXT
     returning
       value(RP_TEXT) type STRING .
+  methods SET_REF
+    importing
+      !IP_TEXT type STRING
+      !IP_REF type STRING optional .
   methods SET_TEXT
     importing
       !IP_TEXT type STRING
@@ -59,6 +65,15 @@ ENDMETHOD.
 method GET_TEXT.
   rp_text = me->text.
 endmethod.
+
+
+METHOD SET_REF.
+    me->text = ip_text.
+
+    IF ip_ref IS SUPPLIED.
+      me->ref = ip_ref.
+    ENDIF.
+  ENDMETHOD.
 
 
 METHOD set_text.

@@ -18,12 +18,6 @@
      <LANGU>E</LANGU>
      <DESCRIPT>Get table</DESCRIPT>
     </SEOCOMPOTX>
-    <SEOCOMPOTX>
-     <CLSNAME>ZCL_EXCEL_CONVERTER_RESULT</CLSNAME>
-     <CMPNAME>GET_TABLE</CMPNAME>
-     <LANGU>I</LANGU>
-     <DESCRIPT>Get table</DESCRIPT>
-    </SEOCOMPOTX>
    </DESCRIPTIONS>
   </asx:values>
  </asx:abap>

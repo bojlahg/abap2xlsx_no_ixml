@@ -18,12 +18,6 @@
      <LANGU>E</LANGU>
      <DESCRIPT>Load VBA binary</DESCRIPT>
     </SEOCOMPOTX>
-    <SEOCOMPOTX>
-     <CLSNAME>ZCL_EXCEL_READER_XLSM</CLSNAME>
-     <CMPNAME>LOAD_VBAPROJECT</CMPNAME>
-     <LANGU>I</LANGU>
-     <DESCRIPT>Load VBA binary</DESCRIPT>
-    </SEOCOMPOTX>
    </DESCRIPTIONS>
   </asx:values>
  </asx:abap>

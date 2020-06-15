@@ -3,20 +3,21 @@ class ZCL_EXCEL_COMMON definition
   final
   create public .
 
+public section.
 *"* public components of class ZCL_EXCEL_COMMON
 *"* do not include other source files here!!!
-public section.
+  type-pools ABAP .
 
   constants C_EXCEL_BASELINE_DATE type D value '19000101'. "#EC NOTEXT
-  class-data C_EXCEL_NUMFMT_OFFSET type INT1 value 164. "#EC NOTEXT .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . " .
+  class-data C_EXCEL_NUMFMT_OFFSET type INT1 value 164. "#EC NOTEXT .
   constants C_EXCEL_SHEET_MAX_COL type INT4 value 16384. "#EC NOTEXT
   constants C_EXCEL_SHEET_MIN_COL type INT4 value 1. "#EC NOTEXT
   constants C_EXCEL_SHEET_MAX_ROW type INT4 value 1048576. "#EC NOTEXT
   constants C_EXCEL_SHEET_MIN_ROW type INT4 value 1. "#EC NOTEXT
-  class-data C_SPRAS_EN type SPRAS value 'E'. "#EC NOTEXT .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . " .
+  class-data C_SPRAS_EN type SPRAS value 'E'. "#EC NOTEXT .
   class-data O_CONV type ref to CL_ABAP_CONV_OUT_CE .
   constants C_EXCEL_1900_LEAP_YEAR type D value '19000228'. "#EC NOTEXT
-  class-data C_XLSX_FILE_FILTER type STRING value 'Excel Workbook (*.xlsx)|*.xlsx|'. "#EC NOTEXT .  .  .  .  .  .  . " .
+  class-data C_XLSX_FILE_FILTER type STRING value 'Excel Workbook (*.xlsx)|*.xlsx|'. "#EC NOTEXT .
 
   class-methods CLASS_CONSTRUCTOR .
   class-methods DESCRIBE_STRUCTURE
@@ -65,6 +66,11 @@ public section.
       !I_PWD type ZEXCEL_AES_PASSWORD
     returning
       value(R_ENCRYPTED_PWD) type ZEXCEL_AES_PASSWORD .
+  class-methods ESCAPE_XML
+    importing
+      !INSTR type STRING
+    returning
+      value(RVAL) type STRING .
   class-methods ESCAPE_STRING
     importing
       !IP_VALUE type CLIKE
@@ -125,7 +131,6 @@ public section.
       !IP_VALUE type T
     returning
       value(EP_VALUE) type ZEXCEL_CELL_VALUE .
-  type-pools ABAP .
   class-methods SPLIT_FILE
     importing
       !IP_FILE type TEXT255
@@ -169,10 +174,6 @@ public section.
       value(RP_IN_RANGE) type ABAP_BOOL
     raising
       ZCX_EXCEL .
-*"* protected components of class ZCL_EXCEL_COMMON
-*"* do not include other source files here!!!
-*"* protected components of class ZCL_EXCEL_COMMON
-*"* do not include other source files here!!!
 protected section.
 private section.
 
@@ -208,6 +209,7 @@ ENDCLASS.
 
 
 CLASS ZCL_EXCEL_COMMON IMPLEMENTATION.
+
 
 METHOD calculate_cell_distance.
 
@@ -760,6 +762,11 @@ method ESCAPE_STRING.
 endmethod.
 
 
+METHOD escape_xml.
+  rval = escape(  val = instr format = cl_abap_format=>e_html_attr ).
+ENDMETHOD.
+
+
 method EXCEL_STRING_TO_DATE.
   DATA: lv_date_int TYPE i.
 
@@ -804,6 +811,7 @@ method EXCEL_STRING_TO_TIME.
       zcx_excel=>raise_text( 'Unable to interpret time' ).
   ENDTRY.
 endmethod.
+
 
 METHOD get_fieldcatalog.
   DATA: lr_dref_tab           TYPE REF TO data,

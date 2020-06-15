@@ -4,13 +4,15 @@ class ZCL_EXCEL_THEME_ECLRSCHEMELST definition
   create public .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME_ECLRSCHEMELST
+*"* do not include other source files here!!!
 
   methods LOAD
     importing
       !IO_EXTRA_COLOR type ref to IF_IXML_ELEMENT .
   methods BUILD_XML
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
 protected section.
 private section.
 
@@ -22,22 +24,15 @@ ENDCLASS.
 CLASS ZCL_EXCEL_THEME_ECLRSCHEMELST IMPLEMENTATION.
 
 
-method build_xml.
-    data: lo_theme type ref to if_ixml_element.
-    data: lo_theme_objdef type ref to if_ixml_element.
-    check io_document is bound.
-    lo_theme ?= io_document->get_root_element( ).
-    check lo_theme is bound.
-    if extracolor is initial.
-      lo_theme_objdef ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix
-                                                                name   = zcl_excel_theme=>c_theme_extra_color
-                                                                parent = lo_theme ).
+METHOD build_xml.
 
-    else.
-      lo_theme->append_child( new_child = extracolor ).
-    endif.
+  IF extracolor IS INITIAL.
+    lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ zcl_excel_theme=>c_theme_extra_color }/>| ).
+  ELSE.
+    extracolor->render( ostream = lo_ostream recursive = abap_true ).
+  ENDIF.
 
-  endmethod.                    "build_xml
+ENDMETHOD.                    "build_xml
 
 
 method load.

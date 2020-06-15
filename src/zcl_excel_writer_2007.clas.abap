@@ -10,9 +10,9 @@ public section.
   METHODS constructor.
 
 protected section.
-
 *"* protected components of class ZCL_EXCEL_WRITER_2007
 *"* do not include other source files here!!!
+
   constants C_CONTENT_TYPES type STRING value '[Content_Types].xml'. "#EC NOTEXT
   constants C_DOCPROPS_APP type STRING value 'docProps/app.xml'. "#EC NOTEXT
   constants C_DOCPROPS_CORE type STRING value 'docProps/core.xml'. "#EC NOTEXT
@@ -34,11 +34,11 @@ protected section.
   constants C_XL_COMMENTS type STRING value 'xl/comments#.xml'. "#EC NOTEXT
   constants CL_XL_DRAWING_FOR_COMMENTS type STRING value 'xl/drawings/vmlDrawing#.vml'. "#EC NOTEXT
   constants C_XL_DRAWINGS_VML_RELS type STRING value 'xl/drawings/_rels/vmlDrawing#.vml.rels'. "#EC NOTEXT
-  data ixml type ref to if_ixml.
+  data IXML type ref to IF_IXML .
 
   methods CREATE_XL_SHEET_SHEET_DATA
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM
       !IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET
     returning
       value(RV_IXML_SHEET_DATA_ROOT) type ref to IF_IXML_ELEMENT .
@@ -48,7 +48,10 @@ protected section.
   methods CREATE
     returning
       value(EP_EXCEL) type XSTRING .
+  type-pools ABAP .
   methods CREATE_CONTENT_TYPES
+    importing
+      value(ADD_MACRO) type ABAP_BOOL default ' '
     returning
       value(EP_CONTENT) type XSTRING .
   methods CREATE_DOCPROPS_APP
@@ -59,6 +62,7 @@ protected section.
       value(EP_CONTENT) type XSTRING .
   methods CREATE_DXF_STYLE
     importing
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM
       !IV_CELL_STYLE type ZEXCEL_CELL_STYLE
       !IO_DXF_ELEMENT type ref to IF_IXML_ELEMENT
       !IO_IXML_DOCUMENT type ref to IF_IXML_DOCUMENT
@@ -93,16 +97,16 @@ protected section.
   methods CREATE_XL_DRAWING_ANCHOR
     importing
       !IO_DRAWING type ref to ZCL_EXCEL_DRAWING
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT
-      !IP_INDEX type I
-    returning
-      value(EP_ANCHOR) type ref to IF_IXML_ELEMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM
+      !IP_INDEX type I .
   methods CREATE_XL_DRAWING_FOR_COMMENTS
     importing
       !IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET
     returning
       value(EP_CONTENT) type XSTRING .
   methods CREATE_XL_RELATIONSHIPS
+    importing
+      value(ADD_MACRO) type ABAP_BOOL default ' '
     returning
       value(EP_CONTENT) type XSTRING .
   methods CREATE_XL_SHAREDSTRINGS
@@ -112,14 +116,14 @@ protected section.
     importing
       !IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET
       !IV_ACTIVE type FLAG default ''
+      value(ADD_MACRO) type ABAP_BOOL default ' '
     returning
       value(EP_CONTENT) type XSTRING
     raising
       ZCX_EXCEL .
   methods CREATE_XL_SHEET_PAGEBREAKS
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT
-      !IO_PARENT type ref to IF_IXML_ELEMENT
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM
       !IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET
     raising
       ZCX_EXCEL .
@@ -135,8 +139,7 @@ protected section.
       value(EP_CONTENT) type XSTRING .
   methods CREATE_XL_STYLES_COLOR_NODE
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT
-      !IO_PARENT type ref to IF_IXML_ELEMENT
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM
       !IV_COLOR_ELEM_NAME type STRING default 'color'
       !IS_COLOR type ZEXCEL_S_STYLE_COLOR .
   methods CREATE_XL_TABLE
@@ -148,6 +151,8 @@ protected section.
     returning
       value(EP_CONTENT) type XSTRING .
   methods CREATE_XL_WORKBOOK
+    importing
+      value(ADD_MACRO) type ABAP_BOOL default ' '
     returning
       value(EP_CONTENT) type XSTRING .
   methods GET_SHARED_STRING_INDEX
@@ -184,18 +189,18 @@ protected section.
       !IO_WORKSHEET type ref to ZCL_EXCEL_WORKSHEET
     returning
       value(EP_CONTENT) type XSTRING .
-  methods create_xml_document
+  methods CREATE_XML_DOCUMENT
     returning
-    value(ro_document) type ref to if_ixml_document.
-  methods render_xml_document
+      value(RO_DOCUMENT) type ref to IF_IXML_DOCUMENT .
+  methods RENDER_XML_DOCUMENT
     importing
-      io_document type ref to if_ixml_document
+      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT
     returning
-    value(ep_content) type xstring.
+      value(EP_CONTENT) type XSTRING .
 private section.
-
 *"* private components of class ZCL_EXCEL_WRITER_2007
 *"* do not include other source files here!!!
+
   constants C_OFF type STRING value '0'. "#EC NOTEXT
   constants C_ON type STRING value '1'. "#EC NOTEXT
   constants C_XL_PRINTERSETTINGS type STRING value 'xl/printerSettings/printerSettings#.bin'. "#EC NOTEXT
@@ -211,14 +216,15 @@ ENDCLASS.
 
 CLASS ZCL_EXCEL_WRITER_2007 IMPLEMENTATION.
 
-  METHOD CONSTRUCTOR.
-    me->ixml = cl_ixml=>create( ).
-  ENDMETHOD.
-
 
 METHOD add_further_data_to_zip.
 * Can be used by child classes like xlsm-writer to write additional data to zip archive
 ENDMETHOD.
+
+
+  METHOD CONSTRUCTOR.
+    me->ixml = cl_ixml=>create( ).
+  ENDMETHOD.
 
 
 METHOD create.
@@ -487,7 +493,24 @@ ENDMETHOD.
 
 
 method CREATE_CONTENT_TYPES.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
+  DATA: lc_xml_node_workb_ct_macro    TYPE string VALUE 'application/vnd.ms-excel.sheet.macroEnabled.main+xml',
+        " Node attributes
+        lc_xml_node_bin_ext     TYPE string VALUE 'bin',
+        lc_xml_node_bin_ct      TYPE string VALUE 'application/vnd.ms-office.vbaProject'.
 
 ** Constant node name
   DATA: lc_xml_node_types         TYPE string VALUE 'Types',
@@ -546,98 +569,141 @@ method CREATE_CONTENT_TYPES.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node types
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_types
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-  value = lc_xml_node_types_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_types
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*  value = lc_xml_node_types_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_types }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_types_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
 
   " rels node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_extension
-                                value = lc_xml_node_rels_ext ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_rels_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_extension
+*                                value = lc_xml_node_rels_ext ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_rels_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_default }| ).
+  lo_ostream->write_string( | { lc_xml_attr_extension }="{ lc_xml_node_rels_ext }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_rels_ct }"/>| ).
 
   " extension node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_extension
-                                value = lc_xml_node_xml_ext ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_xml_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_extension
+*                                value = lc_xml_node_xml_ext ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_xml_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_default }| ).
+  lo_ostream->write_string( | { lc_xml_attr_extension }="{ lc_xml_node_xml_ext }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_xml_ct }"/>| ).
+
 
 * Begin - Add - GGAR
   " VML node (for comments)
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_extension
-                                value = lc_xml_node_xml_vml ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_vml_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_extension
+*                                value = lc_xml_node_xml_vml ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_vml_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_default }| ).
+  lo_ostream->write_string( | { lc_xml_attr_extension }="{ lc_xml_node_xml_vml }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_vml_ct }"/>| ).
+
 * End   - Add - GGAR
 
   " Theme node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lc_xml_node_theme_pn ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_theme_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lc_xml_node_theme_pn ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_theme_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+  lo_ostream->write_string( | { lc_xml_attr_partname }="{ lc_xml_node_theme_pn }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_theme_ct }"/>| ).
 
   " Styles node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lc_xml_node_styles_pn ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_styles_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lc_xml_node_styles_pn ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_styles_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+  lo_ostream->write_string( | { lc_xml_attr_partname }="{ lc_xml_node_styles_pn }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_styles_ct }"/>| ).
 
   " Workbook node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lc_xml_node_workb_pn ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_workb_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lc_xml_node_workb_pn ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_workb_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+  lo_ostream->write_string( | { lc_xml_attr_partname }="{ lc_xml_node_workb_pn }"| ).
+  IF add_macro = abap_true.
+    lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_workb_ct_macro }"/>| ).
+  ELSE.
+    lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_workb_ct }"/>| ).
+  ENDIF.
 
   " Properties node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lc_xml_node_props_pn ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_props_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lc_xml_node_props_pn ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_props_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+  lo_ostream->write_string( | { lc_xml_attr_partname }="{ lc_xml_node_props_pn }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_props_ct }"/>| ).
 
   " Worksheet node
   lv_worksheets_num = excel->get_worksheets_size( ).
   DO lv_worksheets_num TIMES.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                     parent = lo_document ).
 
     MOVE sy-index TO lv_worksheets_numc.
     SHIFT lv_worksheets_numc LEFT DELETING LEADING '0'.
     lv_xml_node_worksheet_pn = lc_xml_node_worksheet_pn.
     REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_worksheet_pn WITH lv_worksheets_numc.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                  value = lv_xml_node_worksheet_pn ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                  value = lc_xml_node_worksheet_ct ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                  value = lv_xml_node_worksheet_pn ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                  value = lc_xml_node_worksheet_ct ).
+*    lo_element_root->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+    lo_ostream->write_string( | { lc_xml_attr_partname }="{ lv_xml_node_worksheet_pn }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_worksheet_ct }"/>| ).
+
   ENDDO.
 
   lo_iterator = me->excel->get_worksheets_iterator( ).
@@ -652,13 +718,17 @@ method CREATE_CONTENT_TYPES.
       lv_value = lo_table->get_name( ).
       CONCATENATE '/xl/tables/' lv_value '.xml' INTO lv_value.
 
-      lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lv_value ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_table_ct ).
-      lo_element_root->append_child( new_child = lo_element ).
+*      lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_table_ct ).
+*      lo_element_root->append_child( new_child = lo_element ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+      lo_ostream->write_string( | { lc_xml_attr_partname }="{ lv_value }"| ).
+      lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_table_ct }"/>| ).
     ENDWHILE.
 
 * Begin - Add - GGAR
@@ -672,13 +742,17 @@ method CREATE_CONTENT_TYPES.
       CONCATENATE '/' me->c_xl_comments INTO lv_value.
       REPLACE '#' WITH lv_index_str INTO lv_value.
 
-      lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                       parent = lo_document ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                    value = lv_value ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                    value = lc_xml_node_comments_ct ).
-      lo_element_root->append_child( new_child = lo_element ).
+*      lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                       parent = lo_document ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                    value = lc_xml_node_comments_ct ).
+*      lo_element_root->append_child( new_child = lo_element ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+      lo_ostream->write_string( | { lc_xml_attr_partname }="{ lv_value }"| ).
+      lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_comments_ct }"/>| ).
 
       ADD 1 TO lv_comment_index.
     ENDIF.
@@ -694,13 +768,17 @@ method CREATE_CONTENT_TYPES.
       CONCATENATE '/' me->c_xl_drawings INTO lv_value.
       REPLACE '#' WITH lv_index_str INTO lv_value.
 
-      lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lv_value ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_drawings_ct ).
-      lo_element_root->append_child( new_child = lo_element ).
+*      lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_drawings_ct ).
+*      lo_element_root->append_child( new_child = lo_element ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+      lo_ostream->write_string( | { lc_xml_attr_partname }="{ lv_value }"| ).
+      lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_drawings_ct }"/>| ).
 
       ADD 1 TO lv_drawing_index.
     ENDIF.
@@ -727,15 +805,23 @@ method CREATE_CONTENT_TYPES.
       IMPORTING
         mimetype  = lv_mime_type.
 
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
+*                                                     parent = lo_document ).
     lv_value = lv_media_type.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_extension
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_extension
+*                                  value = lv_value ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_default }| ).
+    lo_ostream->write_string( | { lc_xml_attr_extension }="{ lv_value }"| ).
+
     lv_value = lv_mime_type.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                  value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                  value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+
+
+
+    lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lv_value }"/>| ).
   ENDLOOP.
 
   " Charts
@@ -743,45 +829,86 @@ method CREATE_CONTENT_TYPES.
   WHILE lo_iterator->if_object_collection_iterator~has_next( ) = abap_true.
     lo_drawing ?= lo_iterator->if_object_collection_iterator~get_next( ).
 
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                     parent = lo_document ).
     lv_index_str = lo_drawing->get_index( ).
     CONDENSE lv_index_str.
     lv_value = lc_xml_node_chart_pn.
     REPLACE ALL OCCURRENCES OF '#' IN lv_value WITH lv_index_str.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                  value = lc_xml_node_chart_ct ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                  value = lc_xml_node_chart_ct ).
+*    lo_element_root->append_child( new_child = lo_element ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+      lo_ostream->write_string( | { lc_xml_attr_partname }="{ lv_value }"| ).
+      lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_chart_ct }"/>| ).
   ENDWHILE.
 
   " Strings node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lc_xml_node_strings_pn ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_strings_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lc_xml_node_strings_pn ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_strings_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+  lo_ostream->write_string( | { lc_xml_attr_partname }="{ lc_xml_node_strings_pn }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_strings_ct }"/>| ).
 
   " Strings node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
-                                value = lc_xml_node_core_pn ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
-                                value = lc_xml_node_core_ct ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_override
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_partname
+*                                value = lc_xml_node_core_pn ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                value = lc_xml_node_core_ct ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_override }| ).
+  lo_ostream->write_string( | { lc_xml_attr_partname }="{ lc_xml_node_core_pn }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_core_ct }"/>| ).
+
+
+  IF add_macro = abap_true.
+  " extension node
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_default
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_default }| ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_extension
+*                                  value = lc_xml_node_bin_ext ).
+    lo_ostream->write_string( | { lc_xml_attr_extension }="{ lc_xml_node_bin_ext }"| ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_contenttype
+*                                  value = lc_xml_node_bin_ct ).
+    lo_ostream->write_string( | { lc_xml_attr_contenttype }="{ lc_xml_node_bin_ct }"/>| ).
+*    lo_element_root->append_child( new_child = lo_element ).
+  ENDIF.
+
+  lo_ostream->write_string( |</{ lc_xml_node_types }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 endmethod.
 
 
 method CREATE_DOCPROPS_APP.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_properties        TYPE string VALUE 'Properties',
@@ -821,172 +948,258 @@ method CREATE_DOCPROPS_APP.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node properties
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_properties
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_props_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:vt'
-                                     value = lc_xml_node_props_vt_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_properties
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_props_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:vt'
+*                                     value = lc_xml_node_props_vt_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_properties }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_props_ns }"| ).
+  lo_ostream->write_string( | xmlns:vt="{ lc_xml_node_props_vt_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
   " Application
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_application
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_application
+*                                                   parent = lo_document ).
   lv_value = excel->zif_excel_book_properties~application.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_application }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_application }>| ).
 
   " DocSecurity
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_docsecurity
-                                                            parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_docsecurity
+*                                                            parent = lo_document ).
   lv_value = excel->zif_excel_book_properties~docsecurity.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_docsecurity }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml(  lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_docsecurity }>| ).
 
   " ScaleCrop
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_scalecrop
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_scalecrop
+*                                                   parent = lo_document ).
   lv_value = me->flag2bool( excel->zif_excel_book_properties~scalecrop ).
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_scalecrop }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_scalecrop }>| ).
 
   " HeadingPairs
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_headingpairs
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_headingpairs
+*                                                   parent = lo_document ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_headingpairs }>| ).
 
 
   " * vector node
-  lo_sub_element_vector = lo_document->create_simple_element_ns( name   = lc_xml_node_vector
-                                                                 prefix = lc_vt_ns
-                                                                 parent = lo_document ).
-  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_size
-                                           value   = '2' ).
-  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_basetype
-                                           value   = lc_xml_node_variant ).
+*  lo_sub_element_vector = lo_document->create_simple_element_ns( name   = lc_xml_node_vector
+*                                                                 prefix = lc_vt_ns
+*                                                                 parent = lo_document ).
+*  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_size
+*                                           value   = '2' ).
+*  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_basetype
+*                                           value   = lc_xml_node_variant ).
+
+  lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_vector }| ).
+  lo_ostream->write_string( | { lc_xml_attr_size }="{ 2 }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_basetype }="{ lc_xml_node_variant }">| ).
 
   " ** variant node
-  lo_sub_element_variant = lo_document->create_simple_element_ns( name   = lc_xml_node_variant
-                                                                  prefix = lc_vt_ns
-                                                                  parent = lo_document ).
+*  lo_sub_element_variant = lo_document->create_simple_element_ns( name   = lc_xml_node_variant
+*                                                                  prefix = lc_vt_ns
+*                                                                  parent = lo_document ).
+
+  lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_variant }>| ).
 
   " *** lpstr node
-  lo_sub_element_lpstr = lo_document->create_simple_element_ns( name   = lc_xml_node_lpstr
-                                                                prefix = lc_vt_ns
-                                                                parent = lo_document ).
+*  lo_sub_element_lpstr = lo_document->create_simple_element_ns( name   = lc_xml_node_lpstr
+*                                                                prefix = lc_vt_ns
+*                                                                parent = lo_document ).
   lv_value = excel->get_worksheets_name( ).
-  lo_sub_element_lpstr->set_value( value = lv_value ).
-  lo_sub_element_variant->append_child( new_child = lo_sub_element_lpstr ). " lpstr node
+*  lo_sub_element_lpstr->set_value( value = lv_value ).
+*  lo_sub_element_variant->append_child( new_child = lo_sub_element_lpstr ). " lpstr node
 
-  lo_sub_element_vector->append_child( new_child = lo_sub_element_variant ). " variant node
+  lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_lpstr }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_lpstr }>| ).
+
+*  lo_sub_element_vector->append_child( new_child = lo_sub_element_variant ). " variant node
+
+  lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_variant }>| ).
 
   " ** variant node
-  lo_sub_element_variant = lo_document->create_simple_element_ns( name   = lc_xml_node_variant
-                                                                  prefix = lc_vt_ns
-                                                                  parent = lo_document ).
+*  lo_sub_element_variant = lo_document->create_simple_element_ns( name   = lc_xml_node_variant
+*                                                                  prefix = lc_vt_ns
+*                                                                  parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_variant }>| ).
 
   " *** i4 node
-  lo_sub_element_i4 = lo_document->create_simple_element_ns( name   = lc_xml_node_i4
-                                                             prefix = lc_vt_ns
-                                                             parent = lo_document ).
+*  lo_sub_element_i4 = lo_document->create_simple_element_ns( name   = lc_xml_node_i4
+*                                                             prefix = lc_vt_ns
+*                                                             parent = lo_document ).
   lv_value = excel->get_worksheets_size( ).
   SHIFT lv_value RIGHT DELETING TRAILING space.
   SHIFT lv_value LEFT DELETING LEADING space.
-  lo_sub_element_i4->set_value( value = lv_value ).
-  lo_sub_element_variant->append_child( new_child = lo_sub_element_i4 ). " lpstr node
+*  lo_sub_element_i4->set_value( value = lv_value ).
 
-  lo_sub_element_vector->append_child( new_child = lo_sub_element_variant ). " variant node
+  lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_i4 }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_i4 }>| ).
 
-  lo_element->append_child( new_child = lo_sub_element_vector ). " vector node
+*  lo_sub_element_variant->append_child( new_child = lo_sub_element_i4 ). " lpstr node
 
-  lo_element_root->append_child( new_child = lo_element ). " HeadingPairs
+*  lo_sub_element_vector->append_child( new_child = lo_sub_element_variant ). " variant node
 
+  lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_variant }>| ).
+
+*  lo_element->append_child( new_child = lo_sub_element_vector ). " vector node
+
+  lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_vector }>| ).
+
+*  lo_element_root->append_child( new_child = lo_element ). " HeadingPairs
+
+  lo_ostream->write_string( |</{ lc_xml_node_headingpairs }>| ).
 
   " TitlesOfParts
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_titlesofparts
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_titlesofparts
+*                                                   parent = lo_document ).
 
+  lo_ostream->write_string( |<{ lc_xml_node_titlesofparts }>| ).
 
   " * vector node
-  lo_sub_element_vector = lo_document->create_simple_element_ns( name   = lc_xml_node_vector
-                                                                 prefix = lc_vt_ns
-                                                                 parent = lo_document ).
+*  lo_sub_element_vector = lo_document->create_simple_element_ns( name   = lc_xml_node_vector
+*                                                                 prefix = lc_vt_ns
+*                                                                 parent = lo_document ).
   lv_value = excel->get_worksheets_size( ).
   SHIFT lv_value RIGHT DELETING TRAILING space.
   SHIFT lv_value LEFT DELETING LEADING space.
-  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_size
-                                           value   = lv_value ).
-  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_basetype
-                                           value   = lc_xml_node_lpstr ).
+*  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_size
+*                                           value   = lv_value ).
+*  lo_sub_element_vector->set_attribute_ns( name    = lc_xml_attr_basetype
+*                                           value   = lc_xml_node_lpstr ).
+
+  lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_vector }| ).
+  lo_ostream->write_string( | { lc_xml_attr_size }="{ lv_value }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_basetype }="{ lc_xml_node_lpstr }">| ).
 
   lo_iterator = excel->get_worksheets_iterator( ).
 
   WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
     " ** lpstr node
-    lo_sub_element_lpstr = lo_document->create_simple_element_ns( name   = lc_xml_node_lpstr
-                                                                  prefix = lc_vt_ns
-                                                                  parent = lo_document ).
+*    lo_sub_element_lpstr = lo_document->create_simple_element_ns( name   = lc_xml_node_lpstr
+*                                                                  prefix = lc_vt_ns
+*                                                                  parent = lo_document ).
     lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
     lv_value = lo_worksheet->get_title( ).
-    lo_sub_element_lpstr->set_value( value = lv_value ).
-    lo_sub_element_vector->append_child( new_child = lo_sub_element_lpstr ). " lpstr node
+
+    lo_ostream->write_string( |<{ lc_vt_ns }:{ lc_xml_node_lpstr }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+    lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_lpstr }>| ).
+
+*    lo_sub_element_lpstr->set_value( value = lv_value ).
+*    lo_sub_element_vector->append_child( new_child = lo_sub_element_lpstr ). " lpstr node
   ENDWHILE.
 
-  lo_element->append_child( new_child = lo_sub_element_vector ). " vector node
+*  lo_element->append_child( new_child = lo_sub_element_vector ). " vector node
+  lo_ostream->write_string( |</{ lc_vt_ns }:{ lc_xml_node_vector }>| ).
 
-  lo_element_root->append_child( new_child = lo_element ). " TitlesOfParts
+*  lo_element_root->append_child( new_child = lo_element ). " TitlesOfParts
 
+  lo_ostream->write_string( |</{ lc_xml_node_titlesofparts }>| ).
 
 
   " Company
   IF excel->zif_excel_book_properties~company IS NOT INITIAL.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_company
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_company
+*                                                     parent = lo_document ).
     lv_value = excel->zif_excel_book_properties~company.
-    lo_element->set_value( value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_value( value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_company }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_company }>| ).
   ENDIF.
 
   " LinksUpToDate
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_linksuptodate
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_linksuptodate
+*                                                   parent = lo_document ).
   lv_value = me->flag2bool( excel->zif_excel_book_properties~linksuptodate ).
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_linksuptodate }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_linksuptodate }>| ).
 
   " SharedDoc
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_shareddoc
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_shareddoc
+*                                                   parent = lo_document ).
   lv_value = me->flag2bool( excel->zif_excel_book_properties~shareddoc ).
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_shareddoc }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_shareddoc }>| ).
 
   " HyperlinksChanged
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_hyperlinkschanged
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_hyperlinkschanged
+*                                                   parent = lo_document ).
   lv_value = me->flag2bool( excel->zif_excel_book_properties~hyperlinkschanged ).
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_hyperlinkschanged }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_hyperlinkschanged }>| ).
 
   " AppVersion
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_appversion
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_appversion
+*                                                   parent = lo_document ).
   lv_value = excel->zif_excel_book_properties~appversion.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_appversion }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_appversion }>| ).
+
+
+  lo_ostream->write_string( |</{ lc_xml_node_properties }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 endmethod.
 
 
 method CREATE_DOCPROPS_CORE.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_coreproperties  TYPE string VALUE 'coreProperties',
@@ -1020,84 +1233,117 @@ method CREATE_DOCPROPS_CORE.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node coreProperties
-  lo_element_root  = lo_document->create_simple_element_ns( name   = lc_xml_node_coreproperties
-                                                            prefix = lc_cp_ns
-                                                            parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:cp'
-                                     value = lc_xml_node_cp_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:dc'
-                                     value = lc_xml_node_dc_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:dcterms'
-                                     value = lc_xml_node_dcterms_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:dcmitype'
-                                     value = lc_xml_node_dcmitype_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:xsi'
-                                     value = lc_xml_node_xsi_ns ).
+*  lo_element_root  = lo_document->create_simple_element_ns( name   = lc_xml_node_coreproperties
+*                                                            prefix = lc_cp_ns
+*                                                            parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:cp'
+*                                     value = lc_xml_node_cp_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:dc'
+*                                     value = lc_xml_node_dc_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:dcterms'
+*                                     value = lc_xml_node_dcterms_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:dcmitype'
+*                                     value = lc_xml_node_dcmitype_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:xsi'
+*                                     value = lc_xml_node_xsi_ns ).
+
+  lo_ostream->write_string( |<{ lc_cp_ns }:{ lc_xml_node_coreproperties }| ).
+  lo_ostream->write_string( | xmlns:cp="{ lc_xml_node_cp_ns }"| ).
+  lo_ostream->write_string( | xmlns:dc="{ lc_xml_node_dc_ns }"| ).
+  lo_ostream->write_string( | xmlns:dcterms="{ lc_xml_node_dcterms_ns }"| ).
+  lo_ostream->write_string( | xmlns:dcmitype="{ lc_xml_node_dcmitype_ns }"| ).
+  lo_ostream->write_string( | xmlns:xsi="{ lc_xml_node_xsi_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
   " Creator node
-  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_creator
-                                                      prefix = lc_dc_ns
-                                                      parent = lo_document ).
+*  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_creator
+*                                                      prefix = lc_dc_ns
+*                                                      parent = lo_document ).
   lv_value = excel->zif_excel_book_properties~creator.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_dc_ns }:{ lc_xml_node_creator }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_dc_ns }:{ lc_xml_node_creator }>| ).
 
   " Description node
-  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_description
-                                                      prefix = lc_dc_ns
-                                                      parent = lo_document ).
+*  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_description
+*                                                      prefix = lc_dc_ns
+*                                                      parent = lo_document ).
   lv_value = excel->zif_excel_book_properties~description.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_dc_ns }:{ lc_xml_node_description }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_dc_ns }:{ lc_xml_node_description }>| ).
 
   " lastModifiedBy node
-  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_lastmodifiedby
-                                                      prefix = lc_cp_ns
-                                                      parent = lo_document ).
+*  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_lastmodifiedby
+*                                                      prefix = lc_cp_ns
+*                                                      parent = lo_document ).
   lv_value = excel->zif_excel_book_properties~lastmodifiedby.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_cp_ns }:{ lc_xml_node_lastmodifiedby }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_cp_ns }:{ lc_xml_node_lastmodifiedby }>| ).
 
   " Created node
-  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_created
-                                                      prefix = lc_dcterms_ns
-                                                      parent = lo_document ).
-  lo_element->set_attribute_ns( name    = lc_xml_attr_type
-                                prefix  = lc_xsi_ns
-                                value   = lc_xml_attr_target ).
+*  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_created
+*                                                      prefix = lc_dcterms_ns
+*                                                      parent = lo_document ).
+*  lo_element->set_attribute_ns( name    = lc_xml_attr_type
+*                                prefix  = lc_xsi_ns
+*                                value   = lc_xml_attr_target ).
 
   CONVERT TIME STAMP excel->zif_excel_book_properties~created TIME ZONE sy-zonlo INTO DATE lv_date TIME lv_time.
   CONCATENATE lv_date lv_time INTO lv_value RESPECTING BLANKS.
   REPLACE ALL OCCURRENCES OF REGEX '([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})' IN lv_value WITH '$1-$2-$3T$4:$5:$6Z'.
 * lv_value = excel->zif_excel_book_properties~created.
 *  lv_value = '2010-07-04T14:58:53Z'.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_dcterms_ns }:{ lc_xml_node_created }| ).
+  lo_ostream->write_string( | { lc_xsi_ns }:{ lc_xml_attr_type }="{ lc_xml_attr_target }">| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_dcterms_ns }:{ lc_xml_node_created }>| ).
 
   " Modified node
-  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_modified
-                                                      prefix = lc_dcterms_ns
-                                                      parent = lo_document ).
-  lo_element->set_attribute_ns( name    = lc_xml_attr_type
-                                prefix  = lc_xsi_ns
-                                value   = lc_xml_attr_target ).
+*  lo_element = lo_document->create_simple_element_ns( name   = lc_xml_node_modified
+*                                                      prefix = lc_dcterms_ns
+*                                                      parent = lo_document ).
+*  lo_element->set_attribute_ns( name    = lc_xml_attr_type
+*                                prefix  = lc_xsi_ns
+*                                value   = lc_xml_attr_target ).
   CONVERT TIME STAMP excel->zif_excel_book_properties~modified TIME ZONE sy-zonlo INTO DATE lv_date TIME lv_time.
   CONCATENATE lv_date lv_time INTO lv_value RESPECTING BLANKS.
   REPLACE ALL OCCURRENCES OF REGEX '([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})' IN lv_value WITH '$1-$2-$3T$4:$5:$6Z'.
 *  lv_value = excel->zif_excel_book_properties~modified.
 *  lv_value = '2010-07-04T14:58:53Z'.
-  lo_element->set_value( value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_value( value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_dcterms_ns }:{ lc_xml_node_modified }| ).
+  lo_ostream->write_string( | { lc_xsi_ns }:{ lc_xml_attr_type }="{ lc_xml_attr_target }">| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+  lo_ostream->write_string( |</{ lc_dcterms_ns }:{ lc_xml_node_modified }>| ).
+
+
+  lo_ostream->write_string( |</{ lc_cp_ns }:{ lc_xml_node_coreproperties }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 endmethod.
 
 
@@ -1147,44 +1393,52 @@ METHOD create_dxf_style.
     ADD 1 TO cv_dfx_count.
 
     " dxf node
-    lo_sub_element = io_ixml_document->create_simple_element( name   = lc_xml_node_dxf
-                                                              parent = io_ixml_document ).
+*    lo_sub_element = io_ixml_document->create_simple_element( name   = lc_xml_node_dxf
+*                                                              parent = io_ixml_document ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_dxf }>| ).
 
     "Conditional formatting font style correction by Alessandro Iannacci START
     lv_index = ls_cellxfs-fontid + 1.
     READ TABLE it_fonts INTO ls_font INDEX lv_index.
     IF ls_font IS NOT INITIAL.
-      lo_element_font = io_ixml_document->create_simple_element( name   = lc_xml_node_font
-                                                            parent = io_ixml_document ).
+*      lo_element_font = io_ixml_document->create_simple_element( name   = lc_xml_node_font
+*                                                            parent = io_ixml_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_font }>| ).
       IF ls_font-bold EQ abap_true.
-        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_b
-                                                             parent = io_ixml_document ).
-        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_b
+*                                                             parent = io_ixml_document ).
+*        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_b }/>| ).
       ENDIF.
       IF ls_font-italic EQ abap_true.
-        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_i
-                                                             parent = io_ixml_document ).
-        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_i
+*                                                             parent = io_ixml_document ).
+*        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_i }/>| ).
       ENDIF.
       IF ls_font-underline EQ abap_true.
-        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_u
-                                                             parent = io_ixml_document ).
+*        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_u
+*                                                             parent = io_ixml_document ).
         lv_value = ls_font-underline_mode.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_val
-                                          value = lv_value ).
-        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_val
+*                                          value = lv_value ).
+        lo_ostream->write_string( |<{ lc_xml_node_u }| ).
+        lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
+*        lo_element_font->append_child( new_child = lo_sub_element_2 ).
       ENDIF.
       IF ls_font-strikethrough EQ abap_true.
-        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_strike
-                                                             parent = io_ixml_document ).
-        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_strike
+*                                                             parent = io_ixml_document ).
+*        lo_element_font->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_strike }/>| ).
       ENDIF.
       "color
       create_xl_styles_color_node(
-          io_document        = io_ixml_document
-          io_parent          = lo_element_font
-          is_color           = ls_font-color ).
-      lo_sub_element->append_child( new_child = lo_element_font ).
+          lo_ostream        = lo_ostream
+          is_color          = ls_font-color ).
+      lo_ostream->write_string( |</{ lc_xml_node_font }>| ).
+*      lo_sub_element->append_child( new_child = lo_element_font ).
     ENDIF.
     "---Conditional formatting font style correction by Alessandro Iannacci END
 
@@ -1192,18 +1446,21 @@ METHOD create_dxf_style.
     READ TABLE it_fills INTO ls_fill INDEX ls_cellxfs-fillid.
     IF ls_fill IS NOT INITIAL.
       " fill properties
-      lo_element_fill = io_ixml_document->create_simple_element( name   = lc_xml_node_fill
-                                                               parent = io_ixml_document ).
+*      lo_element_fill = io_ixml_document->create_simple_element( name   = lc_xml_node_fill
+*                                                               parent = io_ixml_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_fill }>| ).
       "pattern
-      lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_patternfill
-                                                           parent = io_ixml_document ).
+*      lo_sub_element_2 = io_ixml_document->create_simple_element( name   = lc_xml_node_patternfill
+*                                                           parent = io_ixml_document ).
       lv_value = ls_fill-filltype.
-      lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_patterntype
-                                          value = lv_value ).
+*      lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_patterntype
+*                                          value = lv_value ).
+      lo_ostream->write_string( |<{ lc_xml_node_patternfill }| ).
+      lo_ostream->write_string( | { lc_xml_attr_patterntype }="{ lv_value }">| ).
+
       " fgcolor
       create_xl_styles_color_node(
-          io_document        = io_ixml_document
-          io_parent          = lo_sub_element_2
+          lo_ostream        = lo_ostream
           is_color           = ls_fill-fgcolor
           iv_color_elem_name = lc_xml_node_fgcolor ).
 
@@ -1214,25 +1471,45 @@ METHOD create_dxf_style.
 
         " bgcolor
         create_xl_styles_color_node(
-            io_document        = io_ixml_document
-            io_parent          = lo_sub_element_2
+            lo_ostream        = lo_ostream
             is_color           = ls_fill-bgcolor
             iv_color_elem_name = lc_xml_node_bgcolor ).
 
       ENDIF.
 
-      lo_element_fill->append_child( new_child = lo_sub_element_2 ). "pattern
+      lo_ostream->write_string( |</{ lc_xml_node_patternfill }>| ).
 
-      lo_sub_element->append_child( new_child = lo_element_fill ).
+      lo_ostream->write_string( |</{ lc_xml_node_fill }>| ).
+
+*      lo_element_fill->append_child( new_child = lo_sub_element_2 ). "pattern
+*
+*      lo_sub_element->append_child( new_child = lo_element_fill ).
     ENDIF.
+
+    lo_ostream->write_string( |</{ lc_xml_node_dxf }>| ).
+
   ENDIF.
 
-  io_dxf_element->append_child( new_child = lo_sub_element ).
+
+
+*  io_dxf_element->append_child( new_child = lo_sub_element ).
 ENDMETHOD.
 
 
 method CREATE_RELATIONSHIPS.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_relationships TYPE string VALUE 'Relationships',
@@ -1262,58 +1539,92 @@ method CREATE_RELATIONSHIPS.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_rels_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_rels_ns ).
+*
+  lo_ostream->write_string( |<{ lc_xml_node_relationships }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_rels_ns }">| ).
+
 
 **********************************************************************
 * STEP 4: Create subnodes
   " Theme node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                value = lc_xml_node_rId3_id ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                value = lc_xml_node_rId3_tp ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                value = lc_xml_node_rId3_tg ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                value = lc_xml_node_rId3_id ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                value = lc_xml_node_rId3_tp ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                value = lc_xml_node_rId3_tg ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lc_xml_node_rId3_id }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rId3_tp }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rId3_tg }"/>| ).
 
   " Styles node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                value = lc_xml_node_rId2_id ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                value = lc_xml_node_rId2_tp ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                value = lc_xml_node_rId2_tg ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                value = lc_xml_node_rId2_id ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                value = lc_xml_node_rId2_tp ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                value = lc_xml_node_rId2_tg ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lc_xml_node_rId2_id }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rId2_tp }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rId2_tg }"/>| ).
 
   " rels node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                value = lc_xml_node_rId1_id ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                value = lc_xml_node_rId1_tp ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                value = lc_xml_node_rId1_tg ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                value = lc_xml_node_rId1_id ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                value = lc_xml_node_rId1_tp ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                value = lc_xml_node_rId1_tg ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lc_xml_node_rId1_id }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rId1_tp }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rId1_tg }"/>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_relationships }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 endmethod.
 
 
 METHOD create_xl_charts.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   CONSTANTS:  lc_xml_node_chartspace            TYPE string VALUE 'c:chartSpace',
@@ -1425,7 +1736,7 @@ METHOD create_xl_charts.
   DATA lo_element                               TYPE REF TO if_ixml_element.
   DATA lo_element2                              TYPE REF TO if_ixml_element.
   DATA lo_element3                              TYPE REF TO if_ixml_element.
-  DATA lo_el_rootchart                           TYPE REF TO if_ixml_element.
+  DATA lo_el_rootchart                          TYPE REF TO if_ixml_element.
   DATA lo_element4                              TYPE REF TO if_ixml_element.
   DATA lo_element5                              TYPE REF TO if_ixml_element.
   DATA lo_element6                              TYPE REF TO if_ixml_element.
@@ -1433,18 +1744,24 @@ METHOD create_xl_charts.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 ***********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_chartspace
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:c'
-                                     value = lc_xml_node_ns_c ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:a'
-                                     value = lc_xml_node_ns_a ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:r'
-                                     value = lc_xml_node_ns_r ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_chartspace
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:c'
+*                                     value = lc_xml_node_ns_c ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:a'
+*                                     value = lc_xml_node_ns_a ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:r'
+*                                     value = lc_xml_node_ns_r ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_chartspace }| ).
+  lo_ostream->write_string( | xmlns:c="{ lc_xml_node_ns_c }"| ).
+  lo_ostream->write_string( | xmlns:a="{ lc_xml_node_ns_a }"| ).
+  lo_ostream->write_string( | xmlns:r="{ lc_xml_node_ns_r }">| ).
 
 **********************************************************************
 * STEP 4: Create chart
@@ -1472,324 +1789,521 @@ METHOD create_xl_charts.
 
   lo_chart = io_drawing->graph.
 
-  lo_element = lo_document->create_simple_element( name = lc_xml_node_date1904
-                                                       parent = lo_element_root ).
-  lo_element->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_1904val ).
+*  lo_element = lo_document->create_simple_element( name = lc_xml_node_date1904
+*                                                       parent = lo_element_root ).
+*  lo_element->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_1904val ).
 
-  lo_element = lo_document->create_simple_element( name = lc_xml_node_lang
-                                                       parent = lo_element_root ).
-  lo_element->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_langval ).
+  lo_ostream->write_string( |<{ lc_xml_node_date1904 }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_1904val }"/>| ).
 
-  lo_element = lo_document->create_simple_element( name = lc_xml_node_roundedcorners
-                                                       parent = lo_element_root ).
-  lo_element->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_roundedcornersval ).
+*  lo_element = lo_document->create_simple_element( name = lc_xml_node_lang
+*                                                       parent = lo_element_root ).
+*  lo_element->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_langval ).
 
-  lo_element = lo_document->create_simple_element( name = lc_xml_node_altcont
-                                                       parent = lo_element_root ).
-  lo_element->set_attribute_ns( name  = 'xmlns:mc'
-                                    value = lc_xml_node_altcont_ns_mc ).
+  lo_ostream->write_string( |<{ lc_xml_node_lang }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_langval }"/>| ).
+
+*  lo_element = lo_document->create_simple_element( name = lc_xml_node_roundedcorners
+*                                                       parent = lo_element_root ).
+*  lo_element->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_roundedcornersval ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_roundedcorners }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_roundedcornersval }"/>| ).
+
+*  lo_element = lo_document->create_simple_element( name = lc_xml_node_altcont
+*                                                       parent = lo_element_root ).
+*  lo_element->set_attribute_ns( name  = 'xmlns:mc'
+*                                    value = lc_xml_node_altcont_ns_mc ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_altcont }| ).
+  lo_ostream->write_string( | xmlns:mc="{ lc_xml_node_altcont_ns_mc }">| ).
 
   "Choice
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_choice
-                                                       parent = lo_element ).
-  lo_element2->set_attribute_ns( name  = 'Requires'
-                                    value = lc_xml_node_choice_ns_requires ).
-  lo_element2->set_attribute_ns( name  = 'xmlns:c14'
-                                    value = lc_xml_node_choice_ns_c14 ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_choice
+*                                                       parent = lo_element ).
+*  lo_element2->set_attribute_ns( name  = 'Requires'
+*                                    value = lc_xml_node_choice_ns_requires ).
+*  lo_element2->set_attribute_ns( name  = 'xmlns:c14'
+*                                    value = lc_xml_node_choice_ns_c14 ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_choice }| ).
+  lo_ostream->write_string( | Requires="{ lc_xml_node_choice_ns_requires }"| ).
+  lo_ostream->write_string( | xmlns:c14="{ lc_xml_node_choice_ns_c14 }">| ).
 
   "C14:style
-  lo_element3 = lo_document->create_simple_element( name = lc_xml_node_style
-                                                       parent = lo_element2 ).
-  lo_element3->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_c14styleval ).
+*  lo_element3 = lo_document->create_simple_element( name = lc_xml_node_style
+*                                                       parent = lo_element2 ).
+*  lo_element3->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_c14styleval ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_style }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_c14styleval }"/>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_choice }>| ).
 
   "Fallback
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_fallback
-                                                       parent = lo_element ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_fallback
+*                                                       parent = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_fallback }>| ).
 
   "C:style
-  lo_element3 = lo_document->create_simple_element( name = lc_xml_node_style2
-                                                       parent = lo_element2 ).
-  lo_element3->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_styleval ).
+*  lo_element3 = lo_document->create_simple_element( name = lc_xml_node_style2
+*                                                       parent = lo_element2 ).
+*  lo_element3->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_styleval ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_style2 }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_styleval }"/>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_fallback }>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_altcont }>| ).
 
   "---------------------------CHART
-  lo_element = lo_document->create_simple_element( name = lc_xml_node_chart
-                                                       parent = lo_element_root ).
+*  lo_element = lo_document->create_simple_element( name = lc_xml_node_chart
+*                                                       parent = lo_element_root ).
+  lo_ostream->write_string( |<{ lc_xml_node_chart }>| ).
   "Added
   IF lo_chart->title IS NOT INITIAL.
-    lo_element2 = lo_document->create_simple_element( name = 'c:title'
-                                                         parent = lo_element ).
-    lo_element3 = lo_document->create_simple_element( name = 'c:tx'
-                                                         parent = lo_element2 ).
-    lo_element4 = lo_document->create_simple_element( name = 'c:rich'
-                                                         parent = lo_element3 ).
-    lo_element5 = lo_document->create_simple_element( name = 'a:bodyPr'
-                                                         parent = lo_element4 ).
-    lo_element5 = lo_document->create_simple_element( name = 'a:lstStyle'
-                                                         parent = lo_element4 ).
-    lo_element5 = lo_document->create_simple_element( name = 'a:p'
-                                                         parent = lo_element4 ).
-    lo_element6 = lo_document->create_simple_element( name = 'a:pPr'
-                                                         parent = lo_element5 ).
-    lo_element7 = lo_document->create_simple_element( name = 'a:defRPr'
-                                                         parent = lo_element6 ).
-    lo_element6 = lo_document->create_simple_element( name = 'a:r'
-                                                         parent = lo_element5 ).
-    lo_element7 = lo_document->create_simple_element( name = 'a:rPr'
-                                                         parent = lo_element6 ).
-    lo_element7->set_attribute_ns( name  = 'lang'
-                                      value = 'en-US' ).
-    lo_element7 = lo_document->create_simple_element( name = 'a:t'
-                                                         parent = lo_element6 ).
-    lo_element7->set_value( value = lo_chart->title ).
+*    lo_element2 = lo_document->create_simple_element( name = 'c:title'
+*                                                         parent = lo_element ).
+    lo_ostream->write_string( |<c:title>| ).
+*    lo_element3 = lo_document->create_simple_element( name = 'c:tx'
+*                                                         parent = lo_element2 ).
+    lo_ostream->write_string( |<c:tx>| ).
+*    lo_element4 = lo_document->create_simple_element( name = 'c:rich'
+*                                                         parent = lo_element3 ).
+    lo_ostream->write_string( |<c:rich>| ).
+*    lo_element5 = lo_document->create_simple_element( name = 'a:bodyPr'
+*                                                         parent = lo_element4 ).
+    lo_ostream->write_string( |<a:bodyPr/>| ).
+*    lo_element5 = lo_document->create_simple_element( name = 'a:lstStyle'
+*                                                         parent = lo_element4 ).
+    lo_ostream->write_string( |<a:lstStyle/>| ).
+*    lo_element5 = lo_document->create_simple_element( name = 'a:p'
+*                                                         parent = lo_element4 ).
+    lo_ostream->write_string( |<a:p>| ).
+
+*    lo_element6 = lo_document->create_simple_element( name = 'a:pPr'
+*                                                         parent = lo_element5 ).
+    lo_ostream->write_string( |<a:pPr>| ).
+*    lo_element7 = lo_document->create_simple_element( name = 'a:defRPr'
+*                                                         parent = lo_element6 ).
+    lo_ostream->write_string( |<a:defRPr/>| ).
+    lo_ostream->write_string( |</a:pPr>| ).
+*    lo_element6 = lo_document->create_simple_element( name = 'a:r'
+*                                                         parent = lo_element5 ).
+    lo_ostream->write_string( |<a:r>| ).
+*    lo_element7 = lo_document->create_simple_element( name = 'a:rPr'
+*                                                         parent = lo_element6 ).
+*    lo_element7->set_attribute_ns( name  = 'lang'
+*                                      value = 'en-US' ).
+    lo_ostream->write_string( |<a:rPr| ).
+    lo_ostream->write_string( | lang="en-US"/>| ).
+
+*    lo_element7 = lo_document->create_simple_element( name = 'a:t'
+*                                                         parent = lo_element6 ).
+*    lo_element7->set_value( value = lo_chart->title ).
+    lo_ostream->write_string( |<a:t>{ zcl_excel_common=>escape_xml( lo_chart->title ) }</a:t>| ).
+
+    lo_ostream->write_string( |</a:r>| ).
+
+    lo_ostream->write_string( |</a:p>| ).
+    lo_ostream->write_string( |</c:rich>| ).
+
+    lo_ostream->write_string( |</c:tx>| ).
+
+    lo_ostream->write_string( |</c:title>| ).
+
   ENDIF.
   "End
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_autotitledeleted
-                                                       parent = lo_element ).
-  lo_element2->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_autotitledeletedval ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_autotitledeleted
+*                                                       parent = lo_element ).
+*  lo_element2->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_autotitledeletedval ).
+  lo_ostream->write_string( |<{ lc_xml_node_autotitledeleted }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_autotitledeletedval }"/>| ).
 
   "plotArea
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_plotarea
-                                                     parent = lo_element ).
-  lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
-                                                     parent = lo_element2 ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_plotarea
+*                                                    parent = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_plotarea }>| ).
+*  lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
+*                                                    parent = lo_element2 ).
+  lo_ostream->write_string( |<{ lc_xml_node_layout }/>| ).
+*******************************************************************************************************************************
   CASE io_drawing->graph_type.
     WHEN zcl_excel_drawing=>c_graph_bars.
       "----bar
-      lo_element3 = lo_document->create_simple_element( name = lc_xml_node_barchart
-                                                   parent = lo_element2 ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_bardir
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_bardirval ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_grouping
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_groupingval ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_varycolors
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_varycolorsval ).
+*      lo_element3 = lo_document->create_simple_element( name = lc_xml_node_barchart
+*                                                   parent = lo_element2 ).
+      lo_ostream->write_string( |<{ lc_xml_node_barchart }>| ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_bardir
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->lc_xml_node_bardir ).
+      lo_ostream->write_string( |<{ lc_xml_node_bardir }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_bardirval }"/>| ).
+
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_grouping
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_groupingval ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_grouping }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_groupingval }"/>| ).
+
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_varycolors
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_varycolorsval ).
+      lo_ostream->write_string( |<{ lc_xml_node_varycolors }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_varycolorsval }"/>| ).
+
 
       "series
       LOOP AT lo_chartb->series INTO ls_serie.
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ser
-                                                   parent = lo_element3 ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_idx
-                                                   parent = lo_element4 ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ser
+*                                                   parent = lo_element3 ).
+        lo_ostream->write_string( |<{ lc_xml_node_ser }>| ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_idx
+*                                                   parent = lo_element4 ).
         IF ls_serie-idx IS NOT INITIAL.
           lv_str = ls_serie-idx.
         ELSE.
           lv_str = sy-tabix - 1.
         ENDIF.
         CONDENSE lv_str.
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = lv_str ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_order
-                                                   parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lv_str ).
+        lo_ostream->write_string( |<{ lc_xml_node_idx }| ).
+        lo_ostream->write_string( | val="{ lv_str }"/>| ).
+
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_order
+*                                                   parent = lo_element4 ).
         lv_str = ls_serie-order.
         CONDENSE lv_str.
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = lv_str ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lv_str ).
+        lo_ostream->write_string( |<{ lc_xml_node_order }| ).
+        lo_ostream->write_string( | val="{ lv_str }"/>| ).
+
         IF ls_serie-sername IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_tx
-                                                    parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_v
-                                                    parent = lo_element5 ).
-          lo_element6->set_value( value = ls_serie-sername ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_tx
+*                                                    parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_v
+*                                                    parent = lo_element5 ).
+*          lo_element6->set_value( value = ls_serie-sername ).
+          lo_ostream->write_string( |<{ lc_xml_node_tx }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_v }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-sername ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_v }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_tx }>| ).
         ENDIF.
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_invertifnegative
-                                                   parent = lo_element4 ).
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = ls_serie-invertifnegative ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_invertifnegative
+*                                                   parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = ls_serie-invertifnegative ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_invertifnegative }| ).
+        lo_ostream->write_string( | val="{ ls_serie-invertifnegative }"/>| ).
+
         IF ls_serie-lbl IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_cat
-                                                     parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_strref
-                                                     parent = lo_element5 ).
-          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
-                                                     parent = lo_element6 ).
-          lo_element7->set_value( value = ls_serie-lbl ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_cat
+*                                                     parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_strref
+*                                                     parent = lo_element5 ).
+*          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
+*                                                     parent = lo_element6 ).
+*          lo_element7->set_value( value = ls_serie-lbl ).
+          lo_ostream->write_string( |<{ lc_xml_node_cat }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_strref }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-lbl ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_strref }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_cat }>| ).
         ENDIF.
         IF ls_serie-ref IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_val
-                                                     parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_numref
-                                                     parent = lo_element5 ).
-          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
-                                                     parent = lo_element6 ).
-          lo_element7->set_value( value = ls_serie-ref ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_val
+*                                                     parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_numref
+*                                                     parent = lo_element5 ).
+*          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
+*                                                     parent = lo_element6 ).
+*          lo_element7->set_value( value = ls_serie-ref ).
+          lo_ostream->write_string( |<{ lc_xml_node_val }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_numref }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-ref ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_numref }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_val }>| ).
         ENDIF.
+
+        lo_ostream->write_string( |</{ lc_xml_node_ser }>| ).
+
       ENDLOOP.
       "endseries
       IF lo_chartb->ns_groupingval = zcl_excel_graph_bars=>c_groupingval_stacked.
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_overlap
-                                                          parent = lo_element3 ).
-        lo_element4->set_attribute_ns( name  = 'val'
-                                       value = '100' ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_overlap
+*                                                          parent = lo_element3 ).
+*        lo_element4->set_attribute_ns( name  = 'val'
+*                                       value = '100' ).
+        lo_ostream->write_string( |<{ lc_xml_node_overlap }| ).
+        lo_ostream->write_string( | val="100"/>| ).
       ENDIF.
 
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_dlbls
-                                                   parent = lo_element3 ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showlegendkey
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_showlegendkeyval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showval
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_showvalval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showcatname
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_showcatnameval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showsername
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_showsernameval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showpercent
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_showpercentval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showbubblesize
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_showbubblesizeval ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_dlbls
+*                                                   parent = lo_element3 ).
+      lo_ostream->write_string( |<{ lc_xml_node_dlbls }>| ).
 
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_gapwidth
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartb->ns_gapwidthval ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showlegendkey
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_showlegendkeyval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showlegendkey }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_showlegendkeyval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showval
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_showvalval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showval }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_showvalval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showcatname
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_showcatnameval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showcatname }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_showcatnameval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showsername
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_showsernameval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showsername }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_showsernameval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showpercent
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_showpercentval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showpercent }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_showpercentval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showbubblesize
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_showbubblesizeval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showbubblesize }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_showbubblesizeval }"/>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_dlbls }>| ).
+
+
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_gapwidth
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartb->ns_gapwidthval ).
+      lo_ostream->write_string( |<{ lc_xml_node_gapwidth }| ).
+      lo_ostream->write_string( | val="{ lo_chartb->ns_gapwidthval }"/>| ).
+
+      LOOP AT lo_chartb->axes INTO ls_ax.
+        lo_ostream->write_string( |<{ lc_xml_node_axid }| ).
+        lo_ostream->write_string( | val="{ ls_ax-axid }"/>| ).
+      ENDLOOP.
+
+      lo_ostream->write_string( |</{ lc_xml_node_barchart }>| ).
 
       "axes
-      lo_el_rootchart = lo_element3.
+*      lo_el_rootchart = lo_element3.
       LOOP AT lo_chartb->axes INTO ls_ax.
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
-                                                   parent = lo_el_rootchart ).
-        lo_element4->set_attribute_ns( name  = 'val'
-                                value = ls_ax-axid ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
+*                                                   parent = lo_el_rootchart ).
+*        lo_element4->set_attribute_ns( name  = 'val'
+*                                value = ls_ax-axid ).
+
+
         CASE ls_ax-type.
           WHEN zcl_excel_graph_bars=>c_catax.
-            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_catax
-                                                   parent = lo_element2 ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axid ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
-                                                   parent = lo_element3 ).
-            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
-                                                   parent = lo_element4 ).
-            lo_element5->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-orientation ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-delete ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'formatCode'
-                                           value = ls_ax-formatcode ).
-            lo_element4->set_attribute_ns( name  = 'sourceLinked'
-                                           value = ls_ax-sourcelinked ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-majortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-minortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-ticklblpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crossax ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crosses ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_auto
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-auto ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lblalgn
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-lblalgn ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lbloffset
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-lbloffset ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_nomultilvllbl
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-nomultilvllbl ).
+*            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_catax
+*                                                   parent = lo_element2 ).
+            lo_ostream->write_string( |<{ lc_xml_node_catax }>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axid ).
+            lo_ostream->write_string( |<{ lc_xml_node_axid }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axid }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
+*                                                   parent = lo_element3 ).
+            lo_ostream->write_string( |<{ lc_xml_node_scaling }>| ).
+*            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
+*                                                   parent = lo_element4 ).
+*            lo_element5->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-orientation ).
+            lo_ostream->write_string( |<{ lc_xml_node_orientation }| ).
+            lo_ostream->write_string( | val="{ ls_ax-orientation }"/>| ).
+            lo_ostream->write_string( |</{ lc_xml_node_scaling }>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-delete ).
+            lo_ostream->write_string( |<{ lc_xml_node_delete }| ).
+            lo_ostream->write_string( | val="{ ls_ax-delete }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_axpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'formatCode'
+*                                           value = ls_ax-formatcode ).
+*            lo_element4->set_attribute_ns( name  = 'sourceLinked'
+*                                           value = ls_ax-sourcelinked ).
+            lo_ostream->write_string( |<{ lc_xml_node_numfmt }| ).
+            lo_ostream->write_string( | formatCode="{ ls_ax-formatcode }"| ).
+            lo_ostream->write_string( | sourceLinked="{ ls_ax-sourcelinked }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-majortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_majortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-majortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-minortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_minortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-minortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-ticklblpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_ticklblpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-ticklblpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crossax ).
+            lo_ostream->write_string( |<{ lc_xml_node_crossax }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crossax }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crosses ).
+            lo_ostream->write_string( |<{ lc_xml_node_crosses }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crosses }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_auto
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-auto ).
+            lo_ostream->write_string( |<{ lc_xml_node_auto }| ).
+            lo_ostream->write_string( | val="{ ls_ax-auto }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lblalgn
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-lblalgn ).
+            lo_ostream->write_string( |<{ lc_xml_node_lblalgn }| ).
+            lo_ostream->write_string( | val="{ ls_ax-lblalgn }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lbloffset
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-lbloffset ).
+            lo_ostream->write_string( |<{ lc_xml_node_lbloffset }| ).
+            lo_ostream->write_string( | val="{ ls_ax-lbloffset }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_nomultilvllbl
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-nomultilvllbl ).
+            lo_ostream->write_string( |<{ lc_xml_node_nomultilvllbl }| ).
+            lo_ostream->write_string( | val="{ ls_ax-nomultilvllbl }"/>| ).
+
+            lo_ostream->write_string( |</{ lc_xml_node_catax }>| ).
           WHEN zcl_excel_graph_bars=>c_valax.
-            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_valax
-                                                   parent = lo_element2 ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axid ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
-                                                   parent = lo_element3 ).
-            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
-                                                   parent = lo_element4 ).
-            lo_element5->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-orientation ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-delete ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majorgridlines
-                                                   parent = lo_element3 ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'formatCode'
-                                           value = ls_ax-formatcode ).
-            lo_element4->set_attribute_ns( name  = 'sourceLinked'
-                                           value = ls_ax-sourcelinked ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-majortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-minortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-ticklblpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crossax ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crosses ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossbetween
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crossbetween ).
+*            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_valax
+*                                                   parent = lo_element2 ).
+            lo_ostream->write_string( |<{ lc_xml_node_valax }>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axid ).
+            lo_ostream->write_string( |<{ lc_xml_node_axid }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axid }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
+*                                                   parent = lo_element3 ).
+            lo_ostream->write_string( |<{ lc_xml_node_scaling }>| ).
+*            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
+*                                                   parent = lo_element4 ).
+*            lo_element5->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-orientation ).
+            lo_ostream->write_string( |<{ lc_xml_node_orientation }| ).
+            lo_ostream->write_string( | val="{ ls_ax-orientation }"/>| ).
+            lo_ostream->write_string( |</{ lc_xml_node_scaling }>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-delete ).
+            lo_ostream->write_string( |<{ lc_xml_node_delete }| ).
+            lo_ostream->write_string( | val="{ ls_ax-delete }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_axpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majorgridlines
+*                                                   parent = lo_element3 ).
+            lo_ostream->write_string( |<{ lc_xml_node_majorgridlines }/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'formatCode'
+*                                           value = ls_ax-formatcode ).
+*            lo_element4->set_attribute_ns( name  = 'sourceLinked'
+*                                           value = ls_ax-sourcelinked ).
+            lo_ostream->write_string( |<{ lc_xml_node_numfmt }| ).
+            lo_ostream->write_string( | formatCode="{ ls_ax-formatcode }"| ).
+            lo_ostream->write_string( | sourceLinked="{ ls_ax-sourcelinked }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-majortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_majortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-majortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-minortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_minortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-minortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-ticklblpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_ticklblpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-ticklblpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crossax ).
+            lo_ostream->write_string( |<{ lc_xml_node_crossax }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crossax }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crosses ).
+            lo_ostream->write_string( |<{ lc_xml_node_crosses }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crosses }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossbetween
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crossbetween ).
+            lo_ostream->write_string( |<{ lc_xml_node_crossbetween }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crossbetween }"/>| ).
+
+            lo_ostream->write_string( |</{ lc_xml_node_valax }>| ).
           WHEN OTHERS.
         ENDCASE.
       ENDLOOP.
@@ -1797,326 +2311,532 @@ METHOD create_xl_charts.
 
     WHEN zcl_excel_drawing=>c_graph_pie.
       "----pie
-      lo_element3 = lo_document->create_simple_element( name = lc_xml_node_piechart
-                                                   parent = lo_element2 ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_varycolors
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_varycolorsval ).
+*      lo_element3 = lo_document->create_simple_element( name = lc_xml_node_piechart
+*                                                   parent = lo_element2 ).
 
+      lo_ostream->write_string( |<{ lc_xml_node_piechart }>| ).
+
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_varycolors
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_varycolorsval ).
+      lo_ostream->write_string( |<{ lc_xml_node_varycolors }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_varycolorsval }"/>| ).
       "series
       LOOP AT lo_chartp->series INTO ls_serie.
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ser
-                                                   parent = lo_element3 ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_idx
-                                                   parent = lo_element4 ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ser
+*                                                   parent = lo_element3 ).
+        lo_ostream->write_string( |<{ lc_xml_node_ser }>| ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_idx
+*                                                   parent = lo_element4 ).
         IF ls_serie-idx IS NOT INITIAL.
           lv_str = ls_serie-idx.
         ELSE.
           lv_str = sy-tabix - 1.
         ENDIF.
         CONDENSE lv_str.
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = lv_str ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_order
-                                                   parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lv_str ).
+        lo_ostream->write_string( |<{ lc_xml_node_idx }| ).
+        lo_ostream->write_string( | val="{ lv_str }"/>| ).
+
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_order
+*                                                   parent = lo_element4 ).
         lv_str = ls_serie-order.
         CONDENSE lv_str.
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = lv_str ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lv_str ).
+        lo_ostream->write_string( |<{ lc_xml_node_order }| ).
+        lo_ostream->write_string( | val="{ lv_str }"/>| ).
+
         IF ls_serie-sername IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_tx
-                                                    parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_v
-                                                    parent = lo_element5 ).
-          lo_element6->set_value( value = ls_serie-sername ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_tx
+*                                                    parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_v
+*                                                    parent = lo_element5 ).
+*          lo_element6->set_value( value = ls_serie-sername ).
+
+          lo_ostream->write_string( |<{ lc_xml_node_tx }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_v }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-sername ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_v }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_tx }>| ).
+
         ENDIF.
         IF ls_serie-lbl IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_cat
-                                                     parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_strref
-                                                     parent = lo_element5 ).
-          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
-                                                     parent = lo_element6 ).
-          lo_element7->set_value( value = ls_serie-lbl ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_cat
+*                                                     parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_strref
+*                                                     parent = lo_element5 ).
+*          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
+*                                                     parent = lo_element6 ).
+*          lo_element7->set_value( value = ls_serie-lbl ).
+          lo_ostream->write_string( |<{ lc_xml_node_cat }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_strref }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-lbl ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_strref }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_cat }>| ).
         ENDIF.
         IF ls_serie-ref IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_val
-                                                     parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_numref
-                                                     parent = lo_element5 ).
-          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
-                                                     parent = lo_element6 ).
-          lo_element7->set_value( value = ls_serie-ref ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_val
+*                                                     parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_numref
+*                                                     parent = lo_element5 ).
+*          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
+*                                                     parent = lo_element6 ).
+*          lo_element7->set_value( value = ls_serie-ref ).
+          lo_ostream->write_string( |<{ lc_xml_node_val }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_numref }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-ref ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_numref }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_val }>| ).
         ENDIF.
+
+        lo_ostream->write_string( |</{ lc_xml_node_ser }>| ).
       ENDLOOP.
       "endseries
 
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_dlbls
-                                                   parent = lo_element3 ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showlegendkey
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showlegendkeyval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showval
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showvalval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showcatname
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showcatnameval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showsername
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showsernameval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showpercent
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showpercentval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showbubblesize
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showbubblesizeval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showleaderlines
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_showleaderlinesval ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_firstsliceang
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartp->ns_firstsliceangval ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_dlbls
+*                                                   parent = lo_element3 ).
+      lo_ostream->write_string( |<{ lc_xml_node_dlbls }>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showlegendkey
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showlegendkeyval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showlegendkey }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showlegendkeyval }"/>| ).
+
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showval
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showvalval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showval }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showvalval }"/>| ).
+
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showcatname
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showcatnameval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showcatname }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showcatnameval }"/>| ).
+
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showsername
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showsernameval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showsername }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showsernameval }"/>| ).
+
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showpercent
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showpercentval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showpercent }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showpercentval }"/>| ).
+
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showbubblesize
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showbubblesizeval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showbubblesize }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showbubblesizeval }"/>| ).
+
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showleaderlines
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_showleaderlinesval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showleaderlines }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_showleaderlinesval }"/>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_dlbls }>| ).
+
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_firstsliceang
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartp->ns_firstsliceangval ).
+      lo_ostream->write_string( |<{ lc_xml_node_firstsliceang }| ).
+      lo_ostream->write_string( | val="{ lo_chartp->ns_firstsliceangval }"/>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_piechart }>| ).
+
     WHEN zcl_excel_drawing=>c_graph_line.
       "----line
-      lo_element3 = lo_document->create_simple_element( name = lc_xml_node_linechart
-                                                   parent = lo_element2 ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_grouping
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_groupingval ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_varycolors
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_varycolorsval ).
+*      lo_element3 = lo_document->create_simple_element( name = lc_xml_node_linechart
+*                                                   parent = lo_element2 ).
+      lo_ostream->write_string( |<{ lc_xml_node_linechart }>| ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_grouping
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_groupingval ).
+      lo_ostream->write_string( |<{ lc_xml_node_grouping }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_groupingval }"/>| ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_varycolors
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_varycolorsval ).
+      lo_ostream->write_string( |<{ lc_xml_node_varycolors }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_varycolorsval }"/>| ).
 
       "series
       LOOP AT lo_chartl->series INTO ls_serie.
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ser
-                                                   parent = lo_element3 ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_idx
-                                                   parent = lo_element4 ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ser
+*                                                          parent = lo_element3 ).
+        lo_ostream->write_string( |<{ lc_xml_node_ser }>| ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_idx
+*                                                          parent = lo_element4 ).
         IF ls_serie-idx IS NOT INITIAL.
           lv_str = ls_serie-idx.
         ELSE.
           lv_str = sy-tabix - 1.
         ENDIF.
         CONDENSE lv_str.
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = lv_str ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_order
-                                                   parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lv_str ).
+        lo_ostream->write_string( |<{ lc_xml_node_idx }| ).
+        lo_ostream->write_string( | val="{ lv_str }"/>| ).
+
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_order
+*                                                   parent = lo_element4 ).
         lv_str = ls_serie-order.
         CONDENSE lv_str.
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = lv_str ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lv_str ).
+        lo_ostream->write_string( |<{ lc_xml_node_order }| ).
+        lo_ostream->write_string( | val="{ lv_str }"/>| ).
+
         IF ls_serie-sername IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_tx
-                                                    parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_v
-                                                    parent = lo_element5 ).
-          lo_element6->set_value( value = ls_serie-sername ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_tx
+*                                                    parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_v
+*                                                    parent = lo_element5 ).
+*          lo_element6->set_value( value = ls_serie-sername ).
+          lo_ostream->write_string( |<{ lc_xml_node_tx }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_v }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-sername ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_v }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_tx }>| ).
+
         ENDIF.
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_marker
-                                                   parent = lo_element4 ).
-        lo_element6 = lo_document->create_simple_element( name = lc_xml_node_symbol
-                                                   parent = lo_element5 ).
-        lo_element6->set_attribute_ns( name  = 'val'
-                                value = ls_serie-symbol ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_marker
+*                                                   parent = lo_element4 ).
+*        lo_element6 = lo_document->create_simple_element( name = lc_xml_node_symbol
+*                                                   parent = lo_element5 ).
+*        lo_element6->set_attribute_ns( name  = 'val'
+*                                value = ls_serie-symbol ).
+        lo_ostream->write_string( |<{ lc_xml_node_marker }>| ).
+        lo_ostream->write_string( |<{ lc_xml_node_symbol }| ).
+        lo_ostream->write_string( | val="{ ls_serie-symbol }"/>| ).
+        lo_ostream->write_string( |</{ lc_xml_node_marker }>| ).
         IF ls_serie-lbl IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_cat
-                                                     parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_strref
-                                                     parent = lo_element5 ).
-          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
-                                                     parent = lo_element6 ).
-          lo_element7->set_value( value = ls_serie-lbl ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_cat
+*                                                     parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_strref
+*                                                     parent = lo_element5 ).
+*          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
+*                                                     parent = lo_element6 ).
+*          lo_element7->set_value( value = ls_serie-lbl ).
+          lo_ostream->write_string( |<{ lc_xml_node_cat }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_strref }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-lbl ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_strref }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_cat }>| ).
         ENDIF.
         IF ls_serie-ref IS NOT INITIAL.
-          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_val
-                                                     parent = lo_element4 ).
-          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_numref
-                                                     parent = lo_element5 ).
-          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
-                                                     parent = lo_element6 ).
-          lo_element7->set_value( value = ls_serie-ref ).
+*          lo_element5 = lo_document->create_simple_element( name = lc_xml_node_val
+*                                                     parent = lo_element4 ).
+*          lo_element6 = lo_document->create_simple_element( name = lc_xml_node_numref
+*                                                     parent = lo_element5 ).
+*          lo_element7 = lo_document->create_simple_element( name = lc_xml_node_f
+*                                                     parent = lo_element6 ).
+*          lo_element7->set_value( value = ls_serie-ref ).
+
+          lo_ostream->write_string( |<{ lc_xml_node_val }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_numref }>| ).
+          lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( ls_serie-ref ) }| ).
+          lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_numref }>| ).
+          lo_ostream->write_string( |</{ lc_xml_node_val }>| ).
         ENDIF.
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_smooth
-                                                     parent = lo_element4 ).
-        lo_element5->set_attribute_ns( name  = 'val'
-                                value = ls_serie-smooth ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_smooth
+*                                                     parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'val'
+*                                value = ls_serie-smooth ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_smooth }| ).
+        lo_ostream->write_string( | val="{ ls_serie-smooth }"/>| ).
+
+
+        lo_ostream->write_string( |</{ lc_xml_node_ser }>| ).
       ENDLOOP.
       "endseries
 
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_dlbls
-                                                   parent = lo_element3 ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showlegendkey
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_showlegendkeyval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showval
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_showvalval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showcatname
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_showcatnameval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showsername
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_showsernameval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showpercent
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_showpercentval ).
-      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showbubblesize
-                                                   parent = lo_element4 ).
-      lo_element5->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_showbubblesizeval ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_dlbls
+*                                                   parent = lo_element3 ).
+      lo_ostream->write_string( |<{ lc_xml_node_dlbls }>| ).
 
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_marker
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_markerval ).
-      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_smooth
-                                                   parent = lo_element3 ).
-      lo_element4->set_attribute_ns( name  = 'val'
-                                value = lo_chartl->ns_smoothval ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showlegendkey
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_showlegendkeyval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showlegendkey }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_showlegendkeyval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showval
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_showvalval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showval }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_showvalval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showcatname
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_showcatnameval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showcatname }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_showcatnameval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showsername
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_showsernameval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showsername }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_showsernameval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showpercent
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_showpercentval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showpercent }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_showpercentval }"/>| ).
+*      lo_element5 = lo_document->create_simple_element( name = lc_xml_node_showbubblesize
+*                                                   parent = lo_element4 ).
+*      lo_element5->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_showbubblesizeval ).
+      lo_ostream->write_string( |<{ lc_xml_node_showbubblesize }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_showbubblesizeval }"/>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_dlbls }>| ).
+
+
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_marker
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_markerval ).
+      lo_ostream->write_string( |<{ lc_xml_node_marker }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_markerval }"/>| ).
+*      lo_element4 = lo_document->create_simple_element( name = lc_xml_node_smooth
+*                                                   parent = lo_element3 ).
+*      lo_element4->set_attribute_ns( name  = 'val'
+*                                value = lo_chartl->ns_smoothval ).
+      lo_ostream->write_string( |<{ lc_xml_node_smooth }| ).
+      lo_ostream->write_string( | val="{ lo_chartl->ns_smoothval }"/>| ).
+
+      LOOP AT lo_chartl->axes INTO ls_ax.
+        lo_ostream->write_string( |<{ lc_xml_node_axid }| ).
+        lo_ostream->write_string( | val="{ ls_ax-axid }"/>| ).
+      ENDLOOP.
+
+      lo_ostream->write_string( |</{ lc_xml_node_linechart }>| ).
 
       "axes
-      lo_el_rootchart = lo_element3.
+*      lo_el_rootchart = lo_element3.
       LOOP AT lo_chartl->axes INTO ls_ax.
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
-                                                   parent = lo_el_rootchart ).
-        lo_element4->set_attribute_ns( name  = 'val'
-                                value = ls_ax-axid ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
+*                                                   parent = lo_el_rootchart ).
+*        lo_element4->set_attribute_ns( name  = 'val'
+*                                value = ls_ax-axid ).
+
+
         CASE ls_ax-type.
           WHEN zcl_excel_graph_line=>c_catax.
-            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_catax
-                                                   parent = lo_element2 ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axid ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
-                                                   parent = lo_element3 ).
-            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
-                                                   parent = lo_element4 ).
-            lo_element5->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-orientation ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-delete ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axpos ).
+*            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_catax
+*                                                   parent = lo_element2 ).
+            lo_ostream->write_string( |<{ lc_xml_node_catax }>| ).
+
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axid ).
+            lo_ostream->write_string( |<{ lc_xml_node_axid }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axid }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
+*                                                   parent = lo_element3 ).
+*            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
+*                                                   parent = lo_element4 ).
+*            lo_element5->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-orientation ).
+
+            lo_ostream->write_string( |<{ lc_xml_node_scaling }>| ).
+            lo_ostream->write_string( |<{ lc_xml_node_orientation }| ).
+            lo_ostream->write_string( | val="{ ls_ax-orientation }"/>| ).
+            lo_ostream->write_string( |</{ lc_xml_node_scaling }>| ).
+
+
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-delete ).
+            lo_ostream->write_string( |<{ lc_xml_node_delete }| ).
+            lo_ostream->write_string( | val="{ ls_ax-delete }"/>| ).
+
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_axpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axpos }"/>| ).
+**            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
+**                                                   parent = lo_element3 ).
+**            lo_element4->set_attribute_ns( name  = 'formatCode'
+**                                           value = ls_ax-formatcode ).
+**            lo_element4->set_attribute_ns( name  = 'sourceLinked'
+**                                           value = ls_ax-sourcelinked ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-majortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_majortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-majortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-minortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_minortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-minortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-ticklblpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_ticklblpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-ticklblpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crossax ).
+            lo_ostream->write_string( |<{ lc_xml_node_crossax }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crossax }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crosses ).
+            lo_ostream->write_string( |<{ lc_xml_node_crosses }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crosses }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_auto
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-auto ).
+            lo_ostream->write_string( |<{ lc_xml_node_auto }| ).
+            lo_ostream->write_string( | val="{ ls_ax-auto }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lblalgn
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-lblalgn ).
+            lo_ostream->write_string( |<{ lc_xml_node_lblalgn }| ).
+            lo_ostream->write_string( | val="{ ls_ax-lblalgn }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lbloffset
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-lbloffset ).
+            lo_ostream->write_string( |<{ lc_xml_node_lbloffset }| ).
+            lo_ostream->write_string( | val="{ ls_ax-lbloffset }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_nomultilvllbl
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-nomultilvllbl ).
+            lo_ostream->write_string( |<{ lc_xml_node_nomultilvllbl }| ).
+            lo_ostream->write_string( | val="{ ls_ax-nomultilvllbl }"/>| ).
+
+            lo_ostream->write_string( |</{ lc_xml_node_catax }>| ).
+
+          WHEN zcl_excel_graph_line=>c_valax.
+*            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_valax
+*                                                   parent = lo_element2 ).
+
+            lo_ostream->write_string( |<{ lc_xml_node_valax }>| ).
+
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axid ).
+            lo_ostream->write_string( |<{ lc_xml_node_axid }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axid }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
+*                                                   parent = lo_element3 ).
+*            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
+*                                                   parent = lo_element4 ).
+*            lo_element5->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-orientation ).
+
+            lo_ostream->write_string( |<{ lc_xml_node_scaling }>| ).
+            lo_ostream->write_string( |<{ lc_xml_node_orientation }| ).
+            lo_ostream->write_string( | val="{ ls_ax-orientation }"/>| ).
+            lo_ostream->write_string( |</{ lc_xml_node_scaling }>| ).
+
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-delete ).
+            lo_ostream->write_string( |<{ lc_xml_node_delete }| ).
+            lo_ostream->write_string( | val="{ ls_ax-delete }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-axpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_axpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-axpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majorgridlines
+*                                                   parent = lo_element3 ).
+            lo_ostream->write_string( |<{ lc_xml_node_majorgridlines }/>| ).
 *            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
 *                                                   parent = lo_element3 ).
 *            lo_element4->set_attribute_ns( name  = 'formatCode'
 *                                           value = ls_ax-formatcode ).
 *            lo_element4->set_attribute_ns( name  = 'sourceLinked'
 *                                           value = ls_ax-sourcelinked ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-majortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-minortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-ticklblpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crossax ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crosses ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_auto
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-auto ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lblalgn
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-lblalgn ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lbloffset
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-lbloffset ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_nomultilvllbl
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-nomultilvllbl ).
-          WHEN zcl_excel_graph_line=>c_valax.
-            lo_element3 = lo_document->create_simple_element( name = lc_xml_node_valax
-                                                   parent = lo_element2 ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axid
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axid ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_scaling
-                                                   parent = lo_element3 ).
-            lo_element5 = lo_document->create_simple_element( name = lc_xml_node_orientation
-                                                   parent = lo_element4 ).
-            lo_element5->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-orientation ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_delete
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-delete ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_axpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-axpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majorgridlines
-                                                   parent = lo_element3 ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_numfmt
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'formatCode'
-                                           value = ls_ax-formatcode ).
-            lo_element4->set_attribute_ns( name  = 'sourceLinked'
-                                           value = ls_ax-sourcelinked ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-majortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-minortickmark ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-ticklblpos ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crossax ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crosses ).
-            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossbetween
-                                                   parent = lo_element3 ).
-            lo_element4->set_attribute_ns( name  = 'val'
-                                           value = ls_ax-crossbetween ).
+            lo_ostream->write_string( |<{ lc_xml_node_numfmt }| ).
+            lo_ostream->write_string( | formatCode="{ ls_ax-formatcode }"| ).
+            lo_ostream->write_string( | sourceLinked="{ ls_ax-sourcelinked }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_majortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-majortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_majortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-majortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_minortickmark
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-minortickmark ).
+            lo_ostream->write_string( |<{ lc_xml_node_minortickmark }| ).
+            lo_ostream->write_string( | val="{ ls_ax-minortickmark }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_ticklblpos
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-ticklblpos ).
+            lo_ostream->write_string( |<{ lc_xml_node_ticklblpos }| ).
+            lo_ostream->write_string( | val="{ ls_ax-ticklblpos }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossax
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crossax ).
+            lo_ostream->write_string( |<{ lc_xml_node_crossax }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crossax }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crosses
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crosses ).
+            lo_ostream->write_string( |<{ lc_xml_node_crosses }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crosses }"/>| ).
+*            lo_element4 = lo_document->create_simple_element( name = lc_xml_node_crossbetween
+*                                                   parent = lo_element3 ).
+*            lo_element4->set_attribute_ns( name  = 'val'
+*                                           value = ls_ax-crossbetween ).
+            lo_ostream->write_string( |<{ lc_xml_node_crossbetween }| ).
+            lo_ostream->write_string( | val="{ ls_ax-crossbetween }"/>| ).
+
+            lo_ostream->write_string( |</{ lc_xml_node_valax }>| ).
           WHEN OTHERS.
         ENDCASE.
       ENDLOOP.
@@ -2125,115 +2845,200 @@ METHOD create_xl_charts.
     WHEN OTHERS.
   ENDCASE.
 
+  lo_ostream->write_string( |</{ lc_xml_node_plotarea }>| ).
+
   "legend
   IF lo_chart->print_label EQ abap_true.
-    lo_element2 = lo_document->create_simple_element( name = lc_xml_node_legend
-                                                       parent = lo_element ).
+*    lo_element2 = lo_document->create_simple_element( name = lc_xml_node_legend
+*                                                       parent = lo_element ).
+    lo_ostream->write_string( |<{ lc_xml_node_legend }>| ).
+
     CASE io_drawing->graph_type.
       WHEN zcl_excel_drawing=>c_graph_bars.
         "----bar
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_legendpos
-                                                     parent = lo_element2 ).
-        lo_element3->set_attribute_ns( name  = 'val'
-                                  value = lo_chartb->ns_legendposval ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
-                                                     parent = lo_element2 ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_overlay
-                                                     parent = lo_element2 ).
-        lo_element3->set_attribute_ns( name  = 'val'
-                                  value = lo_chartb->ns_overlayval ).
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_legendpos
+*                                                     parent = lo_element2 ).
+*        lo_element3->set_attribute_ns( name  = 'val'
+*                                  value = lo_chartb->ns_legendposval ).
+        lo_ostream->write_string( |<{ lc_xml_node_legendpos }| ).
+        lo_ostream->write_string( | val="{ lo_chartb->ns_legendposval }"/>| ).
+
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
+*                                                     parent = lo_element2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_layout }/>| ).
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_overlay
+*                                                     parent = lo_element2 ).
+*        lo_element3->set_attribute_ns( name  = 'val'
+*                                  value = lo_chartb->ns_overlayval ).
+        lo_ostream->write_string( |<{ lc_xml_node_overlay }| ).
+        lo_ostream->write_string( | val="{ lo_chartb->ns_overlayval }"/>| ).
       WHEN zcl_excel_drawing=>c_graph_line.
         "----line
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_legendpos
-                                                     parent = lo_element2 ).
-        lo_element3->set_attribute_ns( name  = 'val'
-                                  value = lo_chartl->ns_legendposval ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
-                                                     parent = lo_element2 ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_overlay
-                                                     parent = lo_element2 ).
-        lo_element3->set_attribute_ns( name  = 'val'
-                                  value = lo_chartl->ns_overlayval ).
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_legendpos
+*                                                     parent = lo_element2 ).
+*        lo_element3->set_attribute_ns( name  = 'val'
+*                                  value = lo_chartl->ns_legendposval ).
+        lo_ostream->write_string( |<{ lc_xml_node_legendpos }| ).
+        lo_ostream->write_string( | val="{ lo_chartl->ns_legendposval }"/>| ).
+
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
+*                                                     parent = lo_element2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_layout }/>| ).
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_overlay
+*                                                     parent = lo_element2 ).
+*        lo_element3->set_attribute_ns( name  = 'val'
+*                                  value = lo_chartl->ns_overlayval ).
+        lo_ostream->write_string( |<{ lc_xml_node_overlay }| ).
+        lo_ostream->write_string( | val="{ lo_chartl->ns_overlayval }"/>| ).
+
       WHEN zcl_excel_drawing=>c_graph_pie.
         "----pie
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_legendpos
-                                                     parent = lo_element2 ).
-        lo_element3->set_attribute_ns( name  = 'val'
-                                  value = lo_chartp->ns_legendposval ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
-                                                     parent = lo_element2 ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_overlay
-                                                     parent = lo_element2 ).
-        lo_element3->set_attribute_ns( name  = 'val'
-                                  value = lo_chartp->ns_overlayval ).
-        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_txpr
-                                                     parent = lo_element2 ).
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_bodypr
-                                                     parent = lo_element3 ).
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lststyle
-                                                     parent = lo_element3 ).
-        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_p
-                                                     parent = lo_element3 ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_ppr
-                                                     parent = lo_element4 ).
-        lo_element5->set_attribute_ns( name  = 'rtl'
-                                  value = lo_chartp->ns_pprrtl ).
-        lo_element6 = lo_document->create_simple_element( name = lc_xml_node_defrpr
-                                                     parent = lo_element5 ).
-        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_endpararpr
-                                                     parent = lo_element4 ).
-        lo_element5->set_attribute_ns( name  = 'lang'
-                                  value = lo_chartp->ns_endpararprlang ).
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_legendpos
+*                                                     parent = lo_element2 ).
+*        lo_element3->set_attribute_ns( name  = 'val'
+*                                  value = lo_chartp->ns_legendposval ).
+        lo_ostream->write_string( |<{ lc_xml_node_legendpos }| ).
+        lo_ostream->write_string( | val="{ lo_chartp->ns_legendposval }"/>| ).
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_layout
+*                                                     parent = lo_element2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_layout }/>| ).
+
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_overlay
+*                                                     parent = lo_element2 ).
+*        lo_element3->set_attribute_ns( name  = 'val'
+*                                  value = lo_chartp->ns_overlayval ).
+        lo_ostream->write_string( |<{ lc_xml_node_overlay }| ).
+        lo_ostream->write_string( | val="{ lo_chartp->ns_overlayval }"/>| ).
+
+*        lo_element3 = lo_document->create_simple_element( name = lc_xml_node_txpr
+*                                                     parent = lo_element2 ).
+        lo_ostream->write_string( |<{ lc_xml_node_txpr }>| ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_bodypr
+*                                                     parent = lo_element3 ).
+        lo_ostream->write_string( |<{ lc_xml_node_bodypr }/>| ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_lststyle
+*                                                     parent = lo_element3 ).
+        lo_ostream->write_string( |<{ lc_xml_node_lststyle }/>| ).
+*        lo_element4 = lo_document->create_simple_element( name = lc_xml_node_p
+*                                                     parent = lo_element3 ).
+        lo_ostream->write_string( |<{ lc_xml_node_p }>| ).
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_ppr
+*                                                     parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'rtl'
+*                                  value = lo_chartp->ns_pprrtl ).
+        lo_ostream->write_string( |<{ lc_xml_node_ppr }| ).
+        lo_ostream->write_string( | rtl="{ lo_chartp->ns_pprrtl }">| ).
+
+*        lo_element6 = lo_document->create_simple_element( name = lc_xml_node_defrpr
+*                                                     parent = lo_element5 ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_defrpr }/>| ).
+
+        lo_ostream->write_string( |</{ lc_xml_node_ppr }>| ).
+
+*        lo_element5 = lo_document->create_simple_element( name = lc_xml_node_endpararpr
+*                                                     parent = lo_element4 ).
+*        lo_element5->set_attribute_ns( name  = 'lang'
+*                                  value = lo_chartp->ns_endpararprlang ).
+        lo_ostream->write_string( |<{ lc_xml_node_endpararpr }| ).
+        lo_ostream->write_string( | lang="{ lo_chartp->ns_endpararprlang }"/>| ).
+
+        lo_ostream->write_string( |</{ lc_xml_node_p }>| ).
+
+        lo_ostream->write_string( |</{ lc_xml_node_txpr }>| ).
       WHEN OTHERS.
     ENDCASE.
+
+    lo_ostream->write_string( |</{ lc_xml_node_legend }>| ).
+
   ENDIF.
 
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_plotvisonly
-                                                       parent = lo_element ).
-  lo_element2->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_plotvisonlyval ).
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_dispblanksas
-                                                       parent = lo_element ).
-  lo_element2->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_dispblanksasval ).
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_showdlblsovermax
-                                                       parent = lo_element ).
-  lo_element2->set_attribute_ns( name  = 'val'
-                                    value = lo_chart->ns_showdlblsovermaxval ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_plotvisonly
+*                                                       parent = lo_element ).
+*  lo_element2->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_plotvisonlyval ).
+  lo_ostream->write_string( |<{ lc_xml_node_plotvisonly }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_plotvisonlyval }"/>| ).
+
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_dispblanksas
+*                                                       parent = lo_element ).
+*  lo_element2->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_dispblanksasval ).
+  lo_ostream->write_string( |<{ lc_xml_node_dispblanksas }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_dispblanksasval }"/>| ).
+
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_showdlblsovermax
+*                                                       parent = lo_element ).
+*  lo_element2->set_attribute_ns( name  = 'val'
+*                                    value = lo_chart->ns_showdlblsovermaxval ).
+  lo_ostream->write_string( |<{ lc_xml_node_showdlblsovermax }| ).
+  lo_ostream->write_string( | val="{ lo_chart->ns_showdlblsovermaxval }"/>| ).
+
   "---------------------------END OF CHART
 
+  lo_ostream->write_string( |</{ lc_xml_node_chart }>| ).
+
   "printSettings
-  lo_element = lo_document->create_simple_element( name = lc_xml_node_printsettings
-                                                       parent = lo_element_root ).
+*  lo_element = lo_document->create_simple_element( name = lc_xml_node_printsettings
+*                                                       parent = lo_element_root ).
+  lo_ostream->write_string( |<{ lc_xml_node_printsettings }>| ).
+
   "headerFooter
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_headerfooter
-                                                       parent = lo_element ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_headerfooter
+*                                                       parent = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_headerfooter }/>| ).
   "pageMargins
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_pagemargins
-                                                       parent = lo_element ).
-  lo_element2->set_attribute_ns( name  = 'b'
-                                    value = lo_chart->pagemargins-b ).
-  lo_element2->set_attribute_ns( name  = 'l'
-                                    value = lo_chart->pagemargins-l ).
-  lo_element2->set_attribute_ns( name  = 'r'
-                                    value = lo_chart->pagemargins-r ).
-  lo_element2->set_attribute_ns( name  = 't'
-                                    value = lo_chart->pagemargins-t ).
-  lo_element2->set_attribute_ns( name  = 'header'
-                                    value = lo_chart->pagemargins-header ).
-  lo_element2->set_attribute_ns( name  = 'footer'
-                                    value = lo_chart->pagemargins-footer ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_pagemargins
+*                                                       parent = lo_element ).
+*  lo_element2->set_attribute_ns( name  = 'b'
+*                                    value = lo_chart->pagemargins-b ).
+*  lo_element2->set_attribute_ns( name  = 'l'
+*                                    value = lo_chart->pagemargins-l ).
+*  lo_element2->set_attribute_ns( name  = 'r'
+*                                    value = lo_chart->pagemargins-r ).
+*  lo_element2->set_attribute_ns( name  = 't'
+*                                    value = lo_chart->pagemargins-t ).
+*  lo_element2->set_attribute_ns( name  = 'header'
+*                                    value = lo_chart->pagemargins-header ).
+*  lo_element2->set_attribute_ns( name  = 'footer'
+*                                    value = lo_chart->pagemargins-footer ).
+  lo_ostream->write_string( |<{ lc_xml_node_pagemargins }| ).
+  lo_ostream->write_string( | b="{ lo_chart->pagemargins-b }"| ).
+  lo_ostream->write_string( | l="{ lo_chart->pagemargins-l }"| ).
+  lo_ostream->write_string( | r="{ lo_chart->pagemargins-r }"| ).
+  lo_ostream->write_string( | t="{ lo_chart->pagemargins-t }"| ).
+  lo_ostream->write_string( | header="{ lo_chart->pagemargins-header }"| ).
+  lo_ostream->write_string( | footer="{ lo_chart->pagemargins-footer }"/>| ).
+
   "pageSetup
-  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_pagesetup
-                                                       parent = lo_element ).
+*  lo_element2 = lo_document->create_simple_element( name = lc_xml_node_pagesetup
+*                                                       parent = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_pagesetup }/>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_printsettings }>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_chartspace }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 ENDMETHOD.
 
 
 METHOD create_xl_comments.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 ** Constant node name
   CONSTANTS:  lc_xml_node_comments    TYPE string VALUE 'comments',
               lc_xml_node_ns          TYPE string VALUE 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
@@ -2283,53 +3088,75 @@ METHOD create_xl_comments.
   DATA: lv_rel_id            TYPE i,
         lv_author            TYPE string.
 
-  DEFINE add_1_val_child_node.
-*   &1: parent element
-*   &2: child element
-*   &3: element name
-*   &4: attribute name
-*   &5: attribute value
+*  DEFINE add_1_val_child_node.
+**   &1: parent element
+**   &2: child element
+**   &3: element name
+**   &4: attribute name
+**   &5: attribute value
+*
+*    &2 = lo_document->create_simple_element( name   = &3
+*                                             parent = lo_document ).
+*    IF &4 IS NOT INITIAL.
+*      &2->set_attribute_ns( name  = &4
+*                            value = &5 ).
+*    ENDIF.
+*    &1->append_child( new_child = &2 ).
+*  END-OF-DEFINITION.
 
-    &2 = lo_document->create_simple_element( name   = &3
-                                             parent = lo_document ).
-    IF &4 IS NOT INITIAL.
-      &2->set_attribute_ns( name  = &4
-                            value = &5 ).
+  DEFINE add_1_val_child_node.
+*   &1: element name
+*   &2: attribute name
+*   &3: attribute value
+    lo_ostream->write_string( |<{ &1 }| ).
+    IF &3 IS NOT INITIAL.
+      lo_ostream->write_string( | { &2 }="{ &3 }"/>| ).
     ENDIF.
-    &1->append_child( new_child = &2 ).
   END-OF-DEFINITION.
 
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
+
 
 ***********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root = lo_document->create_simple_element( name   = lc_xml_node_comments
-                                                        parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_ns ).
+*  lo_element_root = lo_document->create_simple_element( name   = lc_xml_node_comments
+*                                                        parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_comments }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create authors
 * TO-DO: management of several authors
-  lo_element_authors = lo_document->create_simple_element( name   = lc_xml_node_authors
-                                                           parent = lo_document ).
+*  lo_element_authors = lo_document->create_simple_element( name   = lc_xml_node_authors
+*                                                           parent = lo_document ).
 
-  lo_element_author  = lo_document->create_simple_element( name   = lc_xml_node_author
-                                                           parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_authors }>| ).
+
+*  lo_element_author  = lo_document->create_simple_element( name   = lc_xml_node_author
+*                                                           parent = lo_document ).
   lv_author = sy-uname.
-  lo_element_author->set_value( lv_author ).
+*  lo_element_author->set_value( lv_author ).
 
-  lo_element_authors->append_child( new_child = lo_element_author ).
-  lo_element_root->append_child( new_child = lo_element_authors ).
+  lo_ostream->write_string( |<{ lc_xml_node_author }>{ zcl_excel_common=>escape_xml( lv_author ) }</{ lc_xml_node_author }>| ).
+
+*  lo_element_authors->append_child( new_child = lo_element_author ).
+*  lo_element_root->append_child( new_child = lo_element_authors ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_authors }>| ).
 
 **********************************************************************
 * STEP 5: Create comments
 
-  lo_element_commentlist = lo_document->create_simple_element( name   = lc_xml_node_commentlist
-                                                               parent = lo_document ).
+*  lo_element_commentlist = lo_document->create_simple_element( name   = lc_xml_node_commentlist
+*                                                               parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_commentlist }>| ).
 
   lo_comments = io_worksheet->get_comments( ).
 
@@ -2337,56 +3164,94 @@ METHOD create_xl_comments.
   WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
     lo_comment ?= lo_iterator->if_object_collection_iterator~get_next( ).
 
-    lo_element_comment = lo_document->create_simple_element( name   = lc_xml_node_comment
-                                                             parent = lo_document ).
-    lo_element_comment->set_attribute_ns( name  = lc_xml_attr_ref
-                                          value = lo_comment->get_ref( ) ).
-    lo_element_comment->set_attribute_ns( name  = lc_xml_attr_authorid
-                                          value = '0' ).  " TO-DO
+*    lo_element_comment = lo_document->create_simple_element( name   = lc_xml_node_comment
+*                                                             parent = lo_document ).
 
-    lo_element_text = lo_document->create_simple_element( name   = lc_xml_node_text
-                                                          parent = lo_document ).
-    lo_element_r    = lo_document->create_simple_element( name   = lc_xml_node_r
-                                                          parent = lo_document ).
-    lo_element_rpr  = lo_document->create_simple_element( name   = lc_xml_node_rpr
-                                                          parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_comment }| ).
+    lo_ostream->write_string( | { lc_xml_attr_ref }="{ lo_comment->get_ref( ) }" | ).
+    lo_ostream->write_string( | { lc_xml_attr_authorid }="0">| ).
 
-    lo_element_b    = lo_document->create_simple_element( name   = lc_xml_node_b
-                                                          parent = lo_document ).
-    lo_element_rpr->append_child( new_child = lo_element_b ).
+*    lo_element_comment->set_attribute_ns( name  = lc_xml_attr_ref
+*                                          value = lo_comment->get_ref( ) ).
+*    lo_element_comment->set_attribute_ns( name  = lc_xml_attr_authorid
+*                                          value = '0' ).  " TO-DO
 
-    add_1_val_child_node lo_element_rpr: lo_element_sz       lc_xml_node_sz       lc_xml_attr_val      '9',
-                                         lo_element_color    lc_xml_node_color    lc_xml_attr_indexed  '81',
-                                         lo_element_rfont    lc_xml_node_rfont    lc_xml_attr_val      'Tahoma',
-                                         lo_element_family   lc_xml_node_family   lc_xml_attr_val      '2'
-*                                        lo_element_charset  lc_xml_node_charset  lc_xml_attr_val      '1'
-                                         .
+*    lo_element_text = lo_document->create_simple_element( name   = lc_xml_node_text
+*                                                          parent = lo_document ).
 
-    lo_element_r->append_child( new_child = lo_element_rpr ).
+    lo_ostream->write_string( |<{ lc_xml_node_text }>| ).
+*    lo_element_r    = lo_document->create_simple_element( name   = lc_xml_node_r
+*                                                          parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_r }>| ).
+*    lo_element_rpr  = lo_document->create_simple_element( name   = lc_xml_node_rpr
+*                                                          parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_rpr }>| ).
+*    lo_element_b    = lo_document->create_simple_element( name   = lc_xml_node_b
+*                                                          parent = lo_document ).
+*    lo_element_rpr->append_child( new_child = lo_element_b ).
+    lo_ostream->write_string( |<{ lc_xml_node_b }/>| ).
 
-    lo_element_t    = lo_document->create_simple_element( name   = lc_xml_node_t
-                                                          parent = lo_document ).
-    lo_element_t->set_attribute_ns( name  = lc_xml_attr_xmlspacing
-                                    value = 'preserve' ).
-    lo_element_t->set_value( lo_comment->get_text( ) ).
-    lo_element_r->append_child( new_child = lo_element_t ).
+*    add_1_val_child_node lo_element_rpr: lo_element_sz       lc_xml_node_sz       lc_xml_attr_val      '9',
+*                                         lo_element_color    lc_xml_node_color    lc_xml_attr_indexed  '81',
+*                                         lo_element_rfont    lc_xml_node_rfont    lc_xml_attr_val      'Tahoma',
+*                                         lo_element_family   lc_xml_node_family   lc_xml_attr_val      '2'.
+**                                        lo_element_charset  lc_xml_node_charset  lc_xml_attr_val      '1'
 
-    lo_element_text->append_child( new_child = lo_element_r ).
-    lo_element_comment->append_child( new_child = lo_element_text ).
-    lo_element_commentlist->append_child( new_child = lo_element_comment ).
+    add_1_val_child_node lc_xml_node_sz       lc_xml_attr_val      '9'.
+    add_1_val_child_node lc_xml_node_color    lc_xml_attr_indexed  '81'.
+    add_1_val_child_node lc_xml_node_rfont    lc_xml_attr_val      'Tahoma'.
+    add_1_val_child_node lc_xml_node_family   lc_xml_attr_val      '2'.
+
+
+*    lo_element_r->append_child( new_child = lo_element_rpr ).
+    lo_ostream->write_string( |</{ lc_xml_node_rpr }>| ).
+
+*    lo_element_t    = lo_document->create_simple_element( name   = lc_xml_node_t
+*                                                          parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_t }| ).
+*    lo_element_t->set_attribute_ns( name  = lc_xml_attr_xmlspacing
+*                                    value = 'preserve' ).
+    lo_ostream->write_string( | { lc_xml_attr_xmlspacing }="preserve">| ).
+*    lo_element_t->set_value( lo_comment->get_text( ) ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lo_comment->get_text( ) ) }| ).
+*    lo_element_r->append_child( new_child = lo_element_t ).
+    lo_ostream->write_string( |</{ lc_xml_node_t }>| ).
+
+*    lo_element_text->append_child( new_child = lo_element_r ).
+    lo_ostream->write_string( |</{ lc_xml_node_r }>| ).
+*    lo_element_comment->append_child( new_child = lo_element_text ).
+    lo_ostream->write_string( |</{ lc_xml_node_text }>| ).
+*    lo_element_commentlist->append_child( new_child = lo_element_comment ).
+    lo_ostream->write_string( |</{ lc_xml_node_comment }>| ).
   ENDWHILE.
 
-  lo_element_root->append_child( new_child = lo_element_commentlist ).
+*  lo_element_root->append_child( new_child = lo_element_commentlist ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_commentlist }>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_comments }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
 
 method CREATE_XL_DRAWINGS.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   CONSTANTS:  lc_xml_node_wsdr    TYPE string VALUE 'xdr:wsDr',
@@ -2405,16 +3270,21 @@ method CREATE_XL_DRAWINGS.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 ***********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_wsdr
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:xdr'
-                                     value = lc_xml_node_ns_xdr ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:a'
-                                     value = lc_xml_node_ns_a ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_wsdr
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:xdr'
+*                                     value = lc_xml_node_ns_xdr ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:a'
+*                                     value = lc_xml_node_ns_a ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_wsdr }| ).
+  lo_ostream->write_string( | xmlns:xdr="{ lc_xml_node_ns_xdr }"| ).
+  lo_ostream->write_string( | xmlns:a="{ lc_xml_node_ns_a }">| ).
 
 **********************************************************************
 * STEP 4: Create drawings
@@ -2428,23 +3298,36 @@ method CREATE_XL_DRAWINGS.
     lo_drawing ?= lo_iterator->if_object_collection_iterator~get_next( ).
 
     ADD 1 TO lv_rel_id.
-    lo_element_cellanchor = me->create_xl_drawing_anchor(
+    me->create_xl_drawing_anchor(
             io_drawing    = lo_drawing
-            io_document   = lo_document
+            lo_ostream    = lo_ostream
             ip_index      = lv_rel_id ).
-
-    lo_element_root->append_child( new_child = lo_element_cellanchor ).
 
   ENDWHILE.
 
+  lo_ostream->write_string( |</{ lc_xml_node_wsdr }>| ).
+
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 endmethod.
 
 
 METHOD create_xl_drawings_hdft_rels.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_relationships TYPE string VALUE 'Relationships',
@@ -2475,14 +3358,18 @@ METHOD create_xl_drawings_hdft_rels.
 * BODY
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_rels_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_rels_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationships }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_rels_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
@@ -2502,31 +3389,51 @@ METHOD create_xl_drawings_hdft_rels.
       <fs_temp>-str = lv_value.
       CONDENSE lv_value.
       CONCATENATE 'rId' lv_value INTO lv_value.
-      lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                         parent = lo_document ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_id
-*                                    value = 'LOGO' ).
-                                    value = lv_value ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                    value = lc_xml_node_rid_image_tp ).
+*      lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                         parent = lo_document ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_id
+**                                    value = 'LOGO' ).
+*                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                    value = lc_xml_node_rid_image_tp ).
+      lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+      lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+      lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_image_tp }"| ).
 
       lv_value = '../media/#'.
       REPLACE '#' IN lv_value WITH <fs_drawings>-drawing->get_media_name( ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_target
-*                                    value = '../media/LOGO.png' ).
-                                    value = lv_value ).
-      lo_element_root->append_child( new_child = lo_element ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_target
+**                                    value = '../media/LOGO.png' ).
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
+
+*      lo_element_root->append_child( new_child = lo_element ).
     ENDIF.
   ENDLOOP.
 
+  lo_ostream->write_string( |</{ lc_xml_node_relationships }>| ).
+
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.                    "create_xl_drawings_hdft_rels
 
 
 method CREATE_XL_DRAWINGS_RELS.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_relationships TYPE string VALUE 'Relationships',
@@ -2552,14 +3459,18 @@ method CREATE_XL_DRAWINGS_RELS.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_rels_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_rels_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationships }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_rels_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
@@ -2576,33 +3487,40 @@ method CREATE_XL_DRAWINGS_RELS.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
 
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                 parent = lo_document ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
 
     lv_value = lo_drawing->get_media_name( ).
     CASE lo_drawing->get_type( ).
       WHEN zcl_excel_drawing=>type_image.
         CONCATENATE '../media/' lv_value INTO lv_value.
-        lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                      value = lc_xml_node_rid_image_tp ).
+*        lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                      value = lc_xml_node_rid_image_tp ).
+        lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_image_tp }"| ).
 
       WHEN zcl_excel_drawing=>type_chart.
         CONCATENATE '../charts/' lv_value INTO lv_value.
-        lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                      value = lc_xml_node_rid_chart_tp ).
+*        lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                      value = lc_xml_node_rid_chart_tp ).
+        lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_chart_tp }"| ).
 
     ENDCASE.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                  value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
+
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDWHILE.
 
+  lo_ostream->write_string( |</{ lc_xml_node_relationships }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 endmethod.
 
@@ -2649,7 +3567,19 @@ ENDMETHOD.
 
 
 METHOD create_xl_drawings_vml_rels.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 ** Constant node name
   DATA: lc_xml_node_relationships TYPE string VALUE 'Relationships',
         lc_xml_node_relationship  TYPE string VALUE 'Relationship',
@@ -2674,14 +3604,18 @@ METHOD create_xl_drawings_vml_rels.
 * BODY
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_rels_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_rels_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationships }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_rels_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
@@ -2694,35 +3628,41 @@ METHOD create_xl_drawings_vml_rels.
       lv_value = lv_relation_id.
       CONDENSE lv_value.
       CONCATENATE 'rId' lv_value INTO lv_value.
-      lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                         parent = lo_document ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_id
-*                                    value = 'LOGO' ).
-                                    value = lv_value ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                    value = lc_xml_node_rid_image_tp ).
+*      lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                         parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_id
+**                                    value = 'LOGO' ).
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                    value = lc_xml_node_rid_image_tp ).
+      lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_image_tp }"| ).
 
       lv_value = '../media/#'.
       REPLACE '#' IN lv_value WITH lo_drawing->get_media_name( ).
-      lo_element->set_attribute_ns( name  = lc_xml_attr_target
-*                                    value = '../media/LOGO.png' ).
-                                    value = lv_value ).
-      lo_element_root->append_child( new_child = lo_element ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_target
+**                                    value = '../media/LOGO.png' ).
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }">| ).
+*      lo_element_root->append_child( new_child = lo_element ).
     ENDIF.
 
   ENDWHILE.
 
-
+  lo_ostream->write_string( |</{ lc_xml_node_relationships }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
 
-method CREATE_XL_DRAWING_ANCHOR.
-
+METHOD create_xl_drawing_anchor.
+*
 ** Constant node name
   CONSTANTS:  lc_xml_node_onecellanchor TYPE string VALUE 'xdr:oneCellAnchor',
               lc_xml_node_twocellanchor TYPE string VALUE 'xdr:twoCellAnchor',
@@ -2783,16 +3723,21 @@ method CREATE_XL_DRAWING_ANCHOR.
   ls_position = io_drawing->get_position( ).
 
   IF ls_position-anchor = 'ONE'.
-    ep_anchor = io_document->create_simple_element( name   = lc_xml_node_onecellanchor
-                                                                parent = io_document ).
+*    ep_anchor = io_document->create_simple_element( name   = lc_xml_node_onecellanchor
+*                                                                parent = io_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_onecellanchor }>| ).
   ELSE.
-    ep_anchor = io_document->create_simple_element( name   = lc_xml_node_twocellanchor
-                                                                parent = io_document ).
+*    ep_anchor = io_document->create_simple_element( name   = lc_xml_node_twocellanchor
+*                                                                parent = io_document ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_twocellanchor }>| ).
   ENDIF.
 
 *   from cell ******************************
-  lo_element_from = io_document->create_simple_element( name   = lc_xml_node_from
-                                                        parent = io_document ).
+*  lo_element_from = io_document->create_simple_element( name   = lc_xml_node_from
+*                                                        parent = io_document ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_from }>| ).
 
   lv_col = ls_position-from-col.
   lv_row = ls_position-from-row.
@@ -2803,46 +3748,70 @@ method CREATE_XL_DRAWING_ANCHOR.
   CONDENSE lv_col_offset NO-GAPS.
   CONDENSE lv_row_offset NO-GAPS.
 
-  lo_element = io_document->create_simple_element( name = lc_xml_node_col
-                                                   parent = io_document ).
-  lo_element->set_value( value = lv_col ).
-  lo_element_from->append_child( new_child = lo_element ).
+*  lo_element = io_document->create_simple_element( name = lc_xml_node_col
+*                                                   parent = io_document ).
+*  lo_element->set_value( value = lv_col ).
+*  lo_element_from->append_child( new_child = lo_element ).
 
-  lo_element = io_document->create_simple_element( name = lc_xml_node_coloff
-                                                   parent = io_document ).
-  lo_element->set_value( value = lv_col_offset ).
-  lo_element_from->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_col }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_col ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_col }>| ).
 
-  lo_element = io_document->create_simple_element( name = lc_xml_node_row
-                                                   parent = io_document ).
-  lo_element->set_value( value = lv_row ).
-  lo_element_from->append_child( new_child = lo_element ).
+*  lo_element = io_document->create_simple_element( name = lc_xml_node_coloff
+*                                                   parent = io_document ).
+*  lo_element->set_value( value = lv_col_offset ).
+*  lo_element_from->append_child( new_child = lo_element ).
 
-  lo_element = io_document->create_simple_element( name = lc_xml_node_rowoff
-                                                   parent = io_document ).
-  lo_element->set_value( value = lv_row_offset ).
-  lo_element_from->append_child( new_child = lo_element ).
-  ep_anchor->append_child( new_child = lo_element_from ).
+  lo_ostream->write_string( |<{ lc_xml_node_coloff }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_col_offset ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_coloff }>| ).
+
+*  lo_element = io_document->create_simple_element( name = lc_xml_node_row
+*                                                   parent = io_document ).
+*  lo_element->set_value( value = lv_row ).
+*  lo_element_from->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_row }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_row ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_row }>| ).
+
+*  lo_element = io_document->create_simple_element( name = lc_xml_node_rowoff
+*                                                   parent = io_document ).
+*  lo_element->set_value( value = lv_row_offset ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_rowoff }>| ).
+  lo_ostream->write_string( |{ zcl_excel_common=>escape_xml(  lv_row_offset ) }| ).
+  lo_ostream->write_string( |</{ lc_xml_node_rowoff }>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_from }>| ).
+
+*  lo_element_from->append_child( new_child = lo_element ).
+*  ep_anchor->append_child( new_child = lo_element_from ).
+
 
   IF ls_position-anchor = 'ONE'.
 
 *   ext ******************************
-    lo_element_ext = io_document->create_simple_element( name   = lc_xml_node_ext
-                                                         parent = io_document ).
+*    lo_element_ext = io_document->create_simple_element( name   = lc_xml_node_ext
+*                                                         parent = io_document ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_ext }| ).
 
     lv_value = io_drawing->get_width_emu_str( ).
-    lo_element_ext->set_attribute_ns( name  = 'cx'
-                                   value = lv_value ).
+*    lo_element_ext->set_attribute_ns( name  = 'cx'
+*                                   value = lv_value ).
+    lo_ostream->write_string( | cx="{ lv_value }"| ).
     lv_value = io_drawing->get_height_emu_str( ).
-    lo_element_ext->set_attribute_ns( name  = 'cy'
-                                   value = lv_value ).
-    ep_anchor->append_child( new_child = lo_element_ext ).
+*    lo_element_ext->set_attribute_ns( name  = 'cy'
+*                                   value = lv_value ).
+    lo_ostream->write_string( | cy="{ lv_value }"/>| ).
+*    ep_anchor->append_child( new_child = lo_element_ext ).
 
   ELSEIF ls_position-anchor = 'TWO'.
 
 *   to cell ******************************
-    lo_element_to = io_document->create_simple_element( name   = lc_xml_node_to
-                                                        parent = io_document ).
+*    lo_element_to = io_document->create_simple_element( name   = lc_xml_node_to
+*                                                        parent = io_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_to }>| ).
 
     lv_col = ls_position-to-col.
     lv_row = ls_position-to-row.
@@ -2853,179 +3822,293 @@ method CREATE_XL_DRAWING_ANCHOR.
     CONDENSE lv_col_offset NO-GAPS.
     CONDENSE lv_row_offset NO-GAPS.
 
-    lo_element = io_document->create_simple_element( name = lc_xml_node_col
-                                                     parent = io_document ).
-    lo_element->set_value( value = lv_col ).
-    lo_element_to->append_child( new_child = lo_element ).
+*    lo_element = io_document->create_simple_element( name = lc_xml_node_col
+*                                                     parent = io_document ).
+*    lo_element->set_value( value = lv_col ).
+*    lo_element_to->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |<{ lc_xml_node_col }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_col ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_col }>| ).
 
-    lo_element = io_document->create_simple_element( name = lc_xml_node_coloff
-                                                     parent = io_document ).
-    lo_element->set_value( value = lv_col_offset ).
-    lo_element_to->append_child( new_child = lo_element ).
+*    lo_element = io_document->create_simple_element( name = lc_xml_node_coloff
+*                                                     parent = io_document ).
+*    lo_element->set_value( value = lv_col_offset ).
+*    lo_element_to->append_child( new_child = lo_element ).
 
-    lo_element = io_document->create_simple_element( name = lc_xml_node_row
-                                                     parent = io_document ).
-    lo_element->set_value( value = lv_row ).
-    lo_element_to->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |<{ lc_xml_node_coloff }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_col_offset ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_coloff }>| ).
 
-    lo_element = io_document->create_simple_element( name = lc_xml_node_rowoff
-                                                     parent = io_document ).
-    lo_element->set_value( value = lv_row_offset ).
-    lo_element_to->append_child( new_child = lo_element ).
-    ep_anchor->append_child( new_child = lo_element_to ).
+*    lo_element = io_document->create_simple_element( name = lc_xml_node_row
+*                                                     parent = io_document ).
+*    lo_element->set_value( value = lv_row ).
+*    lo_element_to->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_row }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_row ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_row }>| ).
+
+*    lo_element = io_document->create_simple_element( name = lc_xml_node_rowoff
+*                                                     parent = io_document ).
+*    lo_element->set_value( value = lv_row_offset ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_rowoff }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_row_offset ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_rowoff }>| ).
+
+    lo_ostream->write_string( |</{ lc_xml_node_to }>| ).
+
+*    lo_element_to->append_child( new_child = lo_element ).
+*    ep_anchor->append_child( new_child = lo_element_to ).
 
   ENDIF.
 
   CASE io_drawing->get_type( ).
     WHEN zcl_excel_drawing=>type_image.
 *     pic **********************************
-      lo_element_pic = io_document->create_simple_element( name   = lc_xml_node_pic
-                                                           parent = io_document ).
+*      lo_element_pic = io_document->create_simple_element( name   = lc_xml_node_pic
+*                                                           parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_pic }>| ).
 *     nvPicPr
-      lo_element  = io_document->create_simple_element( name = lc_xml_node_nvpicpr
-                                                        parent = io_document ).
+*      lo_element  = io_document->create_simple_element( name = lc_xml_node_nvpicpr
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_nvpicpr }>| ).
 *     cNvPr
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvpr
-                                                        parent = io_document ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvpr
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_cnvpr }| ).
+
       lv_value = sy-index.
       CONDENSE lv_value.
-      lo_element2->set_attribute_ns( name  = 'id'
-                                     value = lv_value ).
-      lo_element2->set_attribute_ns( name  = 'name'
-                                     value = io_drawing->title ).
-      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element2->set_attribute_ns( name  = 'id'
+*                                     value = lv_value ).
+*      lo_element2->set_attribute_ns( name  = 'name'
+*                                     value = io_drawing->title ).
+*      lo_element->append_child( new_child = lo_element2 ).
+
+      lo_ostream->write_string( | id="{ lv_value }"| ).
+      lo_ostream->write_string( | name="{ io_drawing->title }"/>| ).
 
 *     cNvPicPr
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvpicpr
-                                                        parent = io_document ).
-
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvpicpr
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_cnvpicpr }>| ).
 *     picLocks
-      lo_element3 = io_document->create_simple_element( name = lc_xml_node_piclocks
-                                                        parent = io_document ).
-      lo_element3->set_attribute_ns( name  = 'noChangeAspect'
-                                     value = '1' ).
+*      lo_element3 = io_document->create_simple_element( name = lc_xml_node_piclocks
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_piclocks }| ).
+*      lo_element3->set_attribute_ns( name  = 'noChangeAspect'
+*                                     value = '1' ).
 
-      lo_element2->append_child( new_child = lo_element3 ).
-      lo_element->append_child( new_child = lo_element2 ).
-      lo_element_pic->append_child( new_child = lo_element ).
+      lo_ostream->write_string( | noChangeAspect="1"/>| ).
+
+*      lo_element2->append_child( new_child = lo_element3 ).
+      lo_ostream->write_string( |</{ lc_xml_node_cnvpicpr }>| ).
+*      lo_element->append_child( new_child = lo_element2 ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_nvpicpr }>| ).
+
+*      lo_element_pic->append_child( new_child = lo_element ).
 
 *     blipFill
       lv_value = ip_index.
       CONDENSE lv_value.
       CONCATENATE 'rId' lv_value INTO lv_value.
 
-      lo_element  = io_document->create_simple_element( name = lc_xml_node_blipfill
-                                                        parent = io_document ).
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_ablip
-                                                        parent = io_document ).
-      lo_element2->set_attribute_ns( name  = 'xmlns:r'
-                                     value = lc_xml_node_ns_r ).
-      lo_element2->set_attribute_ns( name  = 'r:embed'
-                                     value = lv_value ).
-      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element  = io_document->create_simple_element( name = lc_xml_node_blipfill
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_blipfill }>| ).
 
-      lo_element2  = io_document->create_simple_element( name = lc_xml_node_astretch
-                                                        parent = io_document ).
-      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_ablip
+*                                                        parent = io_document ).
+*      lo_element2->set_attribute_ns( name  = 'xmlns:r'
+*                                     value = lc_xml_node_ns_r ).
+*      lo_element2->set_attribute_ns( name  = 'r:embed'
+*                                     value = lv_value ).
+      lo_ostream->write_string( |<{ lc_xml_node_ablip }| ).
+      lo_ostream->write_string( | xmlns:r="{ lc_xml_node_ns_r }"| ).
+      lo_ostream->write_string( | r:embed="{ lv_value }"/>| ).
 
-      lo_element_pic->append_child( new_child = lo_element ).
+*      lo_element->append_child( new_child = lo_element2 ).
+
+*      lo_element2  = io_document->create_simple_element( name = lc_xml_node_astretch
+*                                                        parent = io_document ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_astretch }/>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_blipfill }>| ).
+*      lo_element->append_child( new_child = lo_element2 ).
+*
+*      lo_element_pic->append_child( new_child = lo_element ).
 
 *     spPr
-      lo_element  = io_document->create_simple_element( name = lc_xml_node_sppr
-                                                        parent = io_document ).
+*      lo_element  = io_document->create_simple_element( name = lc_xml_node_sppr
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_sppr }>| ).
 
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_apgeom
-                                                        parent = io_document ).
-      lo_element2->set_attribute_ns( name  = 'prst'
-                                     value = 'rect' ).
-      lo_element3 = io_document->create_simple_element( name = lc_xml_node_aavlst
-                                                        parent = io_document ).
-      lo_element2->append_child( new_child = lo_element3 ).
-      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_apgeom
+*                                                        parent = io_document ).
 
-      lo_element_pic->append_child( new_child = lo_element ).
-      ep_anchor->append_child( new_child = lo_element_pic ).
+      lo_ostream->write_string( |<{ lc_xml_node_apgeom }| ).
+
+*      lo_element2->set_attribute_ns( name  = 'prst'
+*                                     value = 'rect' ).
+      lo_ostream->write_string( | prst="rect">| ).
+*      lo_element3 = io_document->create_simple_element( name = lc_xml_node_aavlst
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_aavlst }/>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_apgeom }>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_sppr }>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_pic }>| ).
+
+*      lo_element2->append_child( new_child = lo_element3 ).
+*      lo_element->append_child( new_child = lo_element2 ).
+*
+*      lo_element_pic->append_child( new_child = lo_element ).
+*      ep_anchor->append_child( new_child = lo_element_pic ).
     WHEN zcl_excel_drawing=>type_chart.
 *     graphicFrame **********************************
-      lo_element_graphicframe = io_document->create_simple_element( name   = lc_xml_node_graphicframe
-                                                           parent = io_document ).
+*      lo_element_graphicframe = io_document->create_simple_element( name   = lc_xml_node_graphicframe
+*                                                           parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_graphicframe }>| ).
 *     nvGraphicFramePr
-      lo_element  = io_document->create_simple_element( name = lc_xml_node_nvgraphicframepr
-                                                        parent = io_document ).
+*      lo_element  = io_document->create_simple_element( name = lc_xml_node_nvgraphicframepr
+*                                                        parent = io_document ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_nvgraphicframepr }>| ).
 *     cNvPr
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvpr
-                                                        parent = io_document ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvpr
+*                                                        parent = io_document ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_cnvpr }| ).
+
       lv_value = sy-index.
       CONDENSE lv_value.
-      lo_element2->set_attribute_ns( name  = 'id'
-                                     value = lv_value ).
-      lo_element2->set_attribute_ns( name  = 'name'
-                                     value = io_drawing->title ).
-      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element2->set_attribute_ns( name  = 'id'
+*                                     value = lv_value ).
+*      lo_element2->set_attribute_ns( name  = 'name'
+*                                     value = io_drawing->title ).
+
+      lo_ostream->write_string( | id="{ lv_value }"| ).
+      lo_ostream->write_string( | name="{ io_drawing->title }"/>| ).
+
+*      lo_element->append_child( new_child = lo_element2 ).
 *     cNvGraphicFramePr
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvgraphicframepr
-                                                        parent = io_document ).
-      lo_element3 = io_document->create_simple_element( name = lc_xml_node_graphicframelocks
-                                                        parent = io_document ).
-      lo_element2->append_child( new_child = lo_element3 ).
-      lo_element->append_child( new_child = lo_element2 ).
-      lo_element_graphicframe->append_child( new_child = lo_element ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_cnvgraphicframepr
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_cnvgraphicframepr }>| ).
+*      lo_element3 = io_document->create_simple_element( name = lc_xml_node_graphicframelocks
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_graphicframelocks }/>| ).
+*      lo_element2->append_child( new_child = lo_element3 ).
+*      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element_graphicframe->append_child( new_child = lo_element ).
+      lo_ostream->write_string( |</{ lc_xml_node_cnvgraphicframepr }>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_nvgraphicframepr }>| ).
 
 *     xfrm
-      lo_element  = io_document->create_simple_element( name = lc_xml_node_xfrm
-                                                        parent = io_document ).
+*      lo_element  = io_document->create_simple_element( name = lc_xml_node_xfrm
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_xfrm }>| ).
 *     off
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_aoff
-                                                        parent = io_document ).
-      lo_element2->set_attribute_ns( name  = 'y' value = '0' ).
-      lo_element2->set_attribute_ns( name  = 'x' value = '0' ).
-      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_aoff
+*                                                        parent = io_document ).
+*      lo_element2->set_attribute_ns( name  = 'y' value = '0' ).
+*      lo_element2->set_attribute_ns( name  = 'x' value = '0' ).
+      lo_ostream->write_string( |<{ lc_xml_node_aoff }| ).
+      lo_ostream->write_string( | y="0"| ).
+      lo_ostream->write_string( | x="0"/>| ).
+*      lo_element->append_child( new_child = lo_element2 ).
 *     ext
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_aext
-                                                        parent = io_document ).
-      lo_element2->set_attribute_ns( name  = 'cy' value = '0' ).
-      lo_element2->set_attribute_ns( name  = 'cx' value = '0' ).
-      lo_element->append_child( new_child = lo_element2 ).
-      lo_element_graphicframe->append_child( new_child = lo_element ).
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_aext
+*                                                        parent = io_document ).
+*      lo_element2->set_attribute_ns( name  = 'cy' value = '0' ).
+*      lo_element2->set_attribute_ns( name  = 'cx' value = '0' ).
+      lo_ostream->write_string( |<{ lc_xml_node_aext }| ).
+      lo_ostream->write_string( | cy="0"| ).
+      lo_ostream->write_string( | cx="0"/>| ).
+*      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element_graphicframe->append_child( new_child = lo_element ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_xfrm }>| ).
 
 *     graphic
-      lo_element  = io_document->create_simple_element( name = lc_xml_node_agraphic
-                                                        parent = io_document ).
+*      lo_element  = io_document->create_simple_element( name = lc_xml_node_agraphic
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_agraphic }>| ).
 *     graphicData
-      lo_element2 = io_document->create_simple_element( name = lc_xml_node_agraphicdata
-                                                        parent = io_document ).
-      lo_element2->set_attribute_ns( name  = 'uri' value = lc_xml_node_ns_c ).
-
+*      lo_element2 = io_document->create_simple_element( name = lc_xml_node_agraphicdata
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_agraphicdata }| ).
+*      lo_element2->set_attribute_ns( name  = 'uri' value = lc_xml_node_ns_c ).
+      lo_ostream->write_string( | uri="{ lc_xml_node_ns_c }">| ).
 *     chart
-      lo_element3 = io_document->create_simple_element( name = lc_xml_node_cchart
-                                                        parent = io_document ).
-
-      lo_element3->set_attribute_ns( name  = 'xmlns:r'
-                                     value = lc_xml_node_ns_r ).
-      lo_element3->set_attribute_ns( name  = 'xmlns:c'
-                                     value = lc_xml_node_ns_c ).
+*      lo_element3 = io_document->create_simple_element( name = lc_xml_node_cchart
+*                                                        parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_cchart }| ).
+*      lo_element3->set_attribute_ns( name  = 'xmlns:r'
+*                                     value = lc_xml_node_ns_r ).
+*      lo_element3->set_attribute_ns( name  = 'xmlns:c'
+*                                     value = lc_xml_node_ns_c ).
+      lo_ostream->write_string( | xmlns:r="{ lc_xml_node_ns_r }"| ).
+      lo_ostream->write_string( | xmlns:c="{ lc_xml_node_ns_c }"| ).
 
       lv_value = ip_index.
       CONDENSE lv_value.
       CONCATENATE 'rId' lv_value INTO lv_value.
-      lo_element3->set_attribute_ns( name  = 'r:id'
-                                     value = lv_value ).
-      lo_element2->append_child( new_child = lo_element3 ).
-      lo_element->append_child( new_child = lo_element2 ).
-      lo_element_graphicframe->append_child( new_child = lo_element ).
-      ep_anchor->append_child( new_child = lo_element_graphicframe ).
+*      lo_element3->set_attribute_ns( name  = 'r:id'
+*                                     value = lv_value ).
+
+      lo_ostream->write_string( | r:id="{ lv_value }"/>| ).
+
+*      lo_element2->append_child( new_child = lo_element3 ).
+*      lo_element->append_child( new_child = lo_element2 ).
+*      lo_element_graphicframe->append_child( new_child = lo_element ).
+*      ep_anchor->append_child( new_child = lo_element_graphicframe ).
+
+       lo_ostream->write_string( |</{ lc_xml_node_agraphicdata }>| ).
+       lo_ostream->write_string( |</{ lc_xml_node_agraphic }>| ).
+
+       lo_ostream->write_string( |</{ lc_xml_node_graphicframe }>| ).
 
   ENDCASE.
 
 *   client data ***************************
-  lo_element_clientdata = io_document->create_simple_element( name   = lc_xml_node_clientdata
-                                                              parent = io_document ).
-  ep_anchor->append_child( new_child = lo_element_clientdata ).
+*  lo_element_clientdata = io_document->create_simple_element( name   = lc_xml_node_clientdata
+*                                                              parent = io_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_clientdata }/>| ).
 
-  endmethod.
+*  ep_anchor->append_child( new_child = lo_element_clientdata ).
+*  ep_anchor->append_child( new_child = lo_element_clientdata ).
+
+  IF ls_position-anchor = 'ONE'.
+    lo_ostream->write_string( |</{ lc_xml_node_onecellanchor }>| ).
+  ELSE.
+    lo_ostream->write_string( |</{ lc_xml_node_twocellanchor }>| ).
+  ENDIF.
+
+ENDMETHOD.
 
 
 METHOD create_xl_drawing_for_comments.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
 ** Constant node name
   CONSTANTS: lc_xml_node_xml             TYPE string VALUE 'xml',
              lc_xml_node_ns_v            TYPE string VALUE 'urn:schemas-microsoft-com:vml',
@@ -3136,61 +4219,86 @@ METHOD create_xl_drawing_for_comments.
 
 **********************************************************************
 * STEP 1: Create XML document
-  lo_document = me->ixml->create_document( ).
+*  lo_document = me->ixml->create_document( ).
+  lo_ostream->write_string( '<?xml version="1.0"?>' ).
 
 ***********************************************************************
 * STEP 2: Create main node relationships
-  lo_element_root = lo_document->create_simple_element( name   = lc_xml_node_xml
-                                                        parent = lo_document ).
-  lo_element_root->set_attribute_ns( : name  = 'xmlns:v'  value = lc_xml_node_ns_v ),
-                                       name  = 'xmlns:o'  value = lc_xml_node_ns_o ),
-                                       name  = 'xmlns:x'  value = lc_xml_node_ns_x ).
+*  lo_element_root = lo_document->create_simple_element( name   = lc_xml_node_xml
+*                                                        parent = lo_document ).
+*  lo_element_root->set_attribute_ns( : name  = 'xmlns:v'  value = lc_xml_node_ns_v ),
+*                                       name  = 'xmlns:o'  value = lc_xml_node_ns_o ),
+*                                       name  = 'xmlns:x'  value = lc_xml_node_ns_x ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_xml }| ).
+  lo_ostream->write_string( | xmlns:v="{ lc_xml_node_ns_v }"| ).
+  lo_ostream->write_string( | xmlns:o="{ lc_xml_node_ns_o }"| ).
+  lo_ostream->write_string( | xmlns:r="{ lc_xml_node_ns_x }">| ).
 
 **********************************************************************
 * STEP 3: Create o:shapeLayout
 * TO-DO: management of several authors
-  lo_element_shapelayout = lo_document->create_simple_element( name   = lc_xml_node_shapelayout
-                                                               parent = lo_document ).
+*  lo_element_shapelayout = lo_document->create_simple_element( name   = lc_xml_node_shapelayout
+*                                                               parent = lo_document ).
+*  lo_element_shapelayout->set_attribute_ns( name  = lc_xml_attr_vext
+*                                            value = lc_xml_attr_val_edit ).
 
-  lo_element_shapelayout->set_attribute_ns( name  = lc_xml_attr_vext
-                                            value = lc_xml_attr_val_edit ).
+  lo_ostream->write_string( |<{ lc_xml_node_shapelayout }| ).
+  lo_ostream->write_string( | { lc_xml_attr_vext }="{ lc_xml_attr_val_edit }">| ).
 
-  lo_element_idmap = lo_document->create_simple_element( name   = lc_xml_node_idmap
-                                                         parent = lo_document ).
-  lo_element_idmap->set_attribute_ns( : name  = lc_xml_attr_vext  value = lc_xml_attr_val_edit ),
-                                        name  = lc_xml_attr_data  value = '1' ).
 
-  lo_element_shapelayout->append_child( new_child = lo_element_idmap ).
+*  lo_element_idmap = lo_document->create_simple_element( name   = lc_xml_node_idmap
+*                                                         parent = lo_document ).
+*  lo_element_idmap->set_attribute_ns( : name  = lc_xml_attr_vext  value = lc_xml_attr_val_edit ),
+*                                        name  = lc_xml_attr_data  value = '1' ).
+  lo_ostream->write_string( |<{ lc_xml_node_idmap }| ).
+  lo_ostream->write_string( | { lc_xml_attr_vext }="{ lc_xml_attr_val_edit }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_data }="1"/>| ).
 
-  lo_element_root->append_child( new_child = lo_element_shapelayout ).
+*  lo_element_shapelayout->append_child( new_child = lo_element_idmap ).
 
-**********************************************************************
-* STEP 4: Create v:shapetype
+  lo_ostream->write_string( |</{ lc_xml_node_shapelayout }>| ).
 
-  lo_element_shapetype = lo_document->create_simple_element( name   = lc_xml_node_shapetype
-                                                             parent = lo_document ).
-
-  lo_element_shapetype->set_attribute_ns( : name  = lc_xml_attr_id         value = '_x0000_t202' ),
-                                            name  = lc_xml_attr_coordsize  value = '21600,21600' ),
-                                            name  = lc_xml_attr_ospt       value = '202' ),
-                                            name  = lc_xml_attr_path       value = 'm,l,21600r21600,l21600,xe' ).
-
-  lo_element_stroke = lo_document->create_simple_element( name   = lc_xml_node_stroke
-                                                          parent = lo_document ).
-  lo_element_stroke->set_attribute_ns( name  = lc_xml_attr_joinstyle       value = lc_xml_attr_val_miter ).
-
-  lo_element_path   = lo_document->create_simple_element( name   = lc_xml_node_path
-                                                          parent = lo_document ).
-  lo_element_path->set_attribute_ns( : name  = lc_xml_attr_gradientshapeok value = lc_xml_attr_val_t ),
-                                       name  = lc_xml_attr_oconnecttype    value = lc_xml_attr_val_rect ).
-
-  lo_element_shapetype->append_child( : new_child = lo_element_stroke ),
-                                        new_child = lo_element_path ).
-
-  lo_element_root->append_child( new_child = lo_element_shapetype ).
+*  lo_element_root->append_child( new_child = lo_element_shapelayout ).
 
 **********************************************************************
 * STEP 4: Create v:shapetype
+
+*  lo_element_shapetype = lo_document->create_simple_element( name   = lc_xml_node_shapetype
+*                                                             parent = lo_document ).
+*  lo_element_shapetype->set_attribute_ns( : name  = lc_xml_attr_id         value = '_x0000_t202' ),
+*                                            name  = lc_xml_attr_coordsize  value = '21600,21600' ),
+*                                            name  = lc_xml_attr_ospt       value = '202' ),
+*                                            name  = lc_xml_attr_path       value = 'm,l,21600r21600,l21600,xe' ).
+  lo_ostream->write_string( |<{ lc_xml_node_shapetype }| ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="_x0000_t202"| ).
+  lo_ostream->write_string( | { lc_xml_attr_coordsize }="21600,21600"| ).
+  lo_ostream->write_string( | { lc_xml_attr_ospt }="202"| ).
+  lo_ostream->write_string( | { lc_xml_attr_path }="m,l,21600r21600,l21600,xe">| ).
+
+*  lo_element_stroke = lo_document->create_simple_element( name   = lc_xml_node_stroke
+*                                                          parent = lo_document ).
+*  lo_element_stroke->set_attribute_ns( name  = lc_xml_attr_joinstyle       value = lc_xml_attr_val_miter ).
+  lo_ostream->write_string( |<{ lc_xml_node_stroke }| ).
+  lo_ostream->write_string( | { lc_xml_attr_joinstyle }="{ lc_xml_attr_val_miter }"/>| ).
+
+*  lo_element_path   = lo_document->create_simple_element( name   = lc_xml_node_path
+*                                                          parent = lo_document ).
+*  lo_element_path->set_attribute_ns( : name  = lc_xml_attr_gradientshapeok value = lc_xml_attr_val_t ),
+*                                       name  = lc_xml_attr_oconnecttype    value = lc_xml_attr_val_rect ).
+  lo_ostream->write_string( |<{ lc_xml_node_path }| ).
+  lo_ostream->write_string( | { lc_xml_attr_gradientshapeok }="{ lc_xml_attr_val_t }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_oconnecttype }="{ lc_xml_attr_val_rect }"/>| ).
+
+*  lo_element_shapetype->append_child( : new_child = lo_element_stroke ),
+*                                        new_child = lo_element_path ).
+*
+*  lo_element_root->append_child( new_child = lo_element_shapetype ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_shapetype }>| ).
+
+**********************************************************************
+* STEP 4: Create v:shape
 
   lo_comments = io_worksheet->get_comments( ).
 
@@ -3204,83 +4312,133 @@ METHOD create_xl_drawing_for_comments.
                                                                 e_row    = lv_row ).
     lv_column = zcl_excel_common=>convert_column2int( lv_str_column ).
 
-    lo_element_shape = lo_document->create_simple_element( name   = lc_xml_node_shape
-                                                           parent = lo_document ).
+*    lo_element_shape = lo_document->create_simple_element( name   = lc_xml_node_shape
+*                                                           parent = lo_document ).
 
     lv_attr_id_index = 1024 + lv_index.
     lv_attr_id = lv_attr_id_index.
     CONCATENATE '_x0000_s' lv_attr_id INTO lv_attr_id.
-    lo_element_shape->set_attribute_ns( : name  = lc_xml_attr_id          value = lv_attr_id ),
-                                          name  = lc_xml_attr_type        value = '#_x0000_t202' ),
-                                          name  = lc_xml_attr_style       value = 'size:auto;width:auto;height:auto;position:absolute;margin-left:117pt;margin-top:172.5pt;z-index:1;visibility:hidden' ),
-                                          name  = lc_xml_attr_fillcolor   value = '#ffffe1' ),
-                                          name  = lc_xml_attr_oinsetmode  value = lc_xml_attr_val_auto ).
+*    lo_element_shape->set_attribute_ns( : name  = lc_xml_attr_id          value = lv_attr_id ),
+*                                          name  = lc_xml_attr_type        value = '#_x0000_t202' ),
+*                                          name  = lc_xml_attr_style       value = 'size:auto;width:auto;height:auto;position:absolute;margin-left:117pt;margin-top:172.5pt;z-index:1;visibility:hidden' ),
+*                                          name  = lc_xml_attr_fillcolor   value = '#ffffe1' ),
+*                                          name  = lc_xml_attr_oinsetmode  value = lc_xml_attr_val_auto ).
+    lo_ostream->write_string( |<{ lc_xml_node_shape }| ).
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_attr_id }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="#_x0000_t202"| ).
+    lo_ostream->write_string( | { lc_xml_attr_style }="size:auto;width:auto;height:auto;position:absolute;margin-left:117pt;margin-top:172.5pt;z-index:1;visibility:hidden"| ).
+    lo_ostream->write_string( | { lc_xml_attr_fillcolor }="#ffffe1"| ).
+    lo_ostream->write_string( | { lc_xml_attr_oinsetmode }="{ lc_xml_attr_val_auto }">| ).
 
     " Fill
-    lo_element_fill = lo_document->create_simple_element( name   = lc_xml_node_fill
-                                                          parent = lo_document ).
-    lo_element_fill->set_attribute_ns( name = lc_xml_attr_color2  value = '#ffffe1' ).
-    lo_element_shape->append_child( new_child = lo_element_fill ).
+*    lo_element_fill = lo_document->create_simple_element( name   = lc_xml_node_fill
+*                                                          parent = lo_document ).
+*    lo_element_fill->set_attribute_ns( name = lc_xml_attr_color2  value = '#ffffe1' ).
+*    lo_element_shape->append_child( new_child = lo_element_fill ).
+    lo_ostream->write_string( |<{ lc_xml_node_fill }| ).
+    lo_ostream->write_string( | { lc_xml_attr_color2 }="#ffffe1"/>| ).
+
     " Shadow
-    lo_element_shadow = lo_document->create_simple_element( name   = lc_xml_node_shadow
-                                                            parent = lo_document ).
-    lo_element_shadow->set_attribute_ns( : name = lc_xml_attr_on        value = lc_xml_attr_val_t ),
-                                           name = lc_xml_attr_color     value = lc_xml_attr_val_black ),
-                                           name = lc_xml_attr_obscured  value = lc_xml_attr_val_t ).
-    lo_element_shape->append_child( new_child = lo_element_shadow ).
+*    lo_element_shadow = lo_document->create_simple_element( name   = lc_xml_node_shadow
+*                                                            parent = lo_document ).
+*    lo_element_shadow->set_attribute_ns( : name = lc_xml_attr_on        value = lc_xml_attr_val_t ),
+*                                           name = lc_xml_attr_color     value = lc_xml_attr_val_black ),
+*                                           name = lc_xml_attr_obscured  value = lc_xml_attr_val_t ).
+*    lo_element_shape->append_child( new_child = lo_element_shadow ).
+    lo_ostream->write_string( |<{ lc_xml_node_shadow }| ).
+    lo_ostream->write_string( | { lc_xml_attr_on }="{ lc_xml_attr_val_t }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_color }="{ lc_xml_attr_val_black }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_obscured }="{ lc_xml_attr_val_t }"/>| ).
+
     " Path
-    lo_element_path = lo_document->create_simple_element( name   = lc_xml_node_path
-                                                          parent = lo_document ).
-    lo_element_path->set_attribute_ns( name = lc_xml_attr_oconnecttype  value = lc_xml_attr_val_none ).
-    lo_element_shape->append_child( new_child = lo_element_path ).
+*    lo_element_path = lo_document->create_simple_element( name   = lc_xml_node_path
+*                                                          parent = lo_document ).
+*    lo_element_path->set_attribute_ns( name = lc_xml_attr_oconnecttype  value = lc_xml_attr_val_none ).
+*    lo_element_shape->append_child( new_child = lo_element_path ).
+    lo_ostream->write_string( |<{ lc_xml_node_path }| ).
+    lo_ostream->write_string( | { lc_xml_attr_oconnecttype }="{ lc_xml_attr_val_none }"/>| ).
+
     " Textbox
-    lo_element_textbox = lo_document->create_simple_element( name   = lc_xml_node_textbox
-                                                             parent = lo_document ).
-    lo_element_textbox->set_attribute_ns( name = lc_xml_attr_style  value = lc_xml_attr_val_msodir ).
-    lo_element_div = lo_document->create_simple_element( name   = lc_xml_node_div
-                                                         parent = lo_document ).
-    lo_element_div->set_attribute_ns( name = lc_xml_attr_style  value = 'text-align:left' ).
-    lo_element_textbox->append_child( new_child = lo_element_div ).
-    lo_element_shape->append_child( new_child = lo_element_textbox ).
+*    lo_element_textbox = lo_document->create_simple_element( name   = lc_xml_node_textbox
+*                                                             parent = lo_document ).
+*    lo_element_textbox->set_attribute_ns( name = lc_xml_attr_style  value = lc_xml_attr_val_msodir ).
+    lo_ostream->write_string( |<{ lc_xml_node_textbox }| ).
+    lo_ostream->write_string( | { lc_xml_attr_style }="{ lc_xml_attr_val_msodir }">| ).
+*    lo_element_div = lo_document->create_simple_element( name   = lc_xml_node_div
+*                                                         parent = lo_document ).
+*    lo_element_div->set_attribute_ns( name = lc_xml_attr_style  value = 'text-align:left' ).
+    lo_ostream->write_string( |<{ lc_xml_node_div }| ).
+    lo_ostream->write_string( | { lc_xml_attr_style }="text-align:left"/>| ).
+*    lo_element_textbox->append_child( new_child = lo_element_div ).
+*    lo_element_shape->append_child( new_child = lo_element_textbox ).
+    lo_ostream->write_string( |</{ lc_xml_node_textbox }>| ).
     " ClientData
-    lo_element_clientdata = lo_document->create_simple_element( name   = lc_xml_node_clientdata
-                                                                parent = lo_document ).
-    lo_element_clientdata->set_attribute_ns( name = lc_xml_attr_objecttype  value = lc_xml_attr_val_note ).
-    lo_element_movewithcells = lo_document->create_simple_element( name   = lc_xml_node_movewithcells
-                                                                   parent = lo_document ).
-    lo_element_clientdata->append_child( new_child = lo_element_movewithcells ).
-    lo_element_sizewithcells = lo_document->create_simple_element( name   = lc_xml_node_sizewithcells
-                                                                   parent = lo_document ).
-    lo_element_clientdata->append_child( new_child = lo_element_sizewithcells ).
-    lo_element_anchor = lo_document->create_simple_element( name   = lc_xml_node_anchor
-                                                            parent = lo_document ).
-    lo_element_anchor->set_value( '2, 15, 11, 10, 4, 31, 15, 9' ).
-    lo_element_clientdata->append_child( new_child = lo_element_anchor ).
-    lo_element_autofill = lo_document->create_simple_element( name   = lc_xml_node_autofill
-                                                              parent = lo_document ).
-    lo_element_autofill->set_value( 'False' ).
-    lo_element_clientdata->append_child( new_child = lo_element_autofill ).
-    lo_element_row = lo_document->create_simple_element( name   = lc_xml_node_row
-                                                         parent = lo_document ).
+*    lo_element_clientdata = lo_document->create_simple_element( name   = lc_xml_node_clientdata
+*                                                                parent = lo_document ).
+*    lo_element_clientdata->set_attribute_ns( name = lc_xml_attr_objecttype  value = lc_xml_attr_val_note ).
+    lo_ostream->write_string( |<{ lc_xml_node_clientdata }| ).
+    lo_ostream->write_string( | { lc_xml_attr_objecttype }="{ lc_xml_attr_val_note }">| ).
+
+*    lo_element_movewithcells = lo_document->create_simple_element( name   = lc_xml_node_movewithcells
+*                                                                   parent = lo_document ).
+*    lo_element_clientdata->append_child( new_child = lo_element_movewithcells ).
+    lo_ostream->write_string( |<{ lc_xml_node_movewithcells }/>| ).
+*    lo_element_sizewithcells = lo_document->create_simple_element( name   = lc_xml_node_sizewithcells
+*                                                                   parent = lo_document ).
+*    lo_element_clientdata->append_child( new_child = lo_element_sizewithcells ).
+    lo_ostream->write_string( |<{ lc_xml_node_sizewithcells }/>| ).
+
+*    lo_element_anchor = lo_document->create_simple_element( name   = lc_xml_node_anchor
+*                                                            parent = lo_document ).
+*    lo_element_anchor->set_value( '2, 15, 11, 10, 4, 31, 15, 9' ).
+*    lo_element_clientdata->append_child( new_child = lo_element_anchor ).
+    lo_ostream->write_string( |<{ lc_xml_node_anchor }>| ).
+    lo_ostream->write_string( |2, 15, 11, 10, 4, 31, 15, 9| ).
+    lo_ostream->write_string( |</{ lc_xml_node_anchor }>| ).
+
+*    lo_element_autofill = lo_document->create_simple_element( name   = lc_xml_node_autofill
+*                                                              parent = lo_document ).
+*    lo_element_autofill->set_value( 'False' ).
+*    lo_element_clientdata->append_child( new_child = lo_element_autofill ).
+    lo_ostream->write_string( |<{ lc_xml_node_autofill }>| ).
+    lo_ostream->write_string( |False| ).
+    lo_ostream->write_string( |</{ lc_xml_node_autofill }>| ).
+
+*    lo_element_row = lo_document->create_simple_element( name   = lc_xml_node_row
+*                                                         parent = lo_document ).
     lv_int_value = lv_row - 1.
     lv_int_value_string = lv_int_value.
-    lo_element_row->set_value( lv_int_value_string ).
-    lo_element_clientdata->append_child( new_child = lo_element_row ).
-    lo_element_column = lo_document->create_simple_element( name   = lc_xml_node_column
-                                                              parent = lo_document ).
+*    lo_element_row->set_value( lv_int_value_string ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_row }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_int_value_string ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_row }>| ).
+
+*    lo_element_clientdata->append_child( new_child = lo_element_row ).
+*    lo_element_column = lo_document->create_simple_element( name   = lc_xml_node_column
+*                                                              parent = lo_document ).
     lv_int_value = lv_column - 1.
     lv_int_value_string = lv_int_value.
-    lo_element_column->set_value( lv_int_value_string ).
-    lo_element_clientdata->append_child( new_child = lo_element_column ).
+*    lo_element_column->set_value( lv_int_value_string ).
 
-    lo_element_shape->append_child( new_child = lo_element_clientdata ).
+    lo_ostream->write_string( |<{ lc_xml_node_column }>| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_int_value_string ) }| ).
+    lo_ostream->write_string( |</{ lc_xml_node_column }>| ).
 
-    lo_element_root->append_child( new_child = lo_element_shape ).
+    lo_ostream->write_string( |</{ lc_xml_node_clientdata }>| ).
+
+*    lo_element_clientdata->append_child( new_child = lo_element_column ).
+*    lo_element_shape->append_child( new_child = lo_element_clientdata ).
+*    lo_element_root->append_child( new_child = lo_element_shape ).
+
+    lo_ostream->write_string( |</{ lc_xml_node_shape }>| ).
   ENDWHILE.
+
+  lo_ostream->write_string( |</{ lc_xml_node_xml }>| ).
 
 **********************************************************************
 * STEP 6: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
@@ -3370,8 +4528,25 @@ METHOD create_xl_drawing_for_hdft_im.
 ENDMETHOD.
 
 
-method CREATE_XL_RELATIONSHIPS.
+METHOD create_xl_relationships.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
+  DATA: " Node type
+        lc_xml_node_rid_vba_tp    TYPE string VALUE 'http://schemas.microsoft.com/office/2006/relationships/vbaProject',
+        " Node target
+        lc_xml_node_rid_vba_tg    TYPE string VALUE 'vbaProject.bin'.
 
 ** Constant node name
   DATA: lc_xml_node_relationships TYPE string VALUE 'Relationships',
@@ -3406,14 +4581,18 @@ method CREATE_XL_RELATIONSHIPS.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_rels_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_rels_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationships }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_rels_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
@@ -3422,48 +4601,59 @@ method CREATE_XL_RELATIONSHIPS.
 
 
   " Relationship node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-  parent = lo_document ).
-  lv_size = lv_size + 1.
-  lv_syindex = lv_size.
-  shift lv_syindex RIGHT DELETING TRAILING space.
-  shift lv_syindex left DELETING leading space.
-  lv_xml_node_ridx_id = lc_xml_node_ridx_id.
-  replace all occurrences of '#' in lv_xml_node_ridx_id with lv_syindex.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_id
-  value = lv_xml_node_ridx_id ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_type
-  value = lc_xml_node_rid_theme_tp ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_target
-  value = lc_xml_node_rid_theme_tg ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                   parent = lo_document ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
 
 
-  " Relationship node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                   parent = lo_document ).
   lv_size = lv_size + 1.
   lv_syindex = lv_size.
   SHIFT lv_syindex RIGHT DELETING TRAILING space.
   SHIFT lv_syindex LEFT DELETING LEADING space.
   lv_xml_node_ridx_id = lc_xml_node_ridx_id.
   REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_id WITH lv_syindex.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                value = lv_xml_node_ridx_id ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                value = lc_xml_node_rid_styles_tp ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                value = lc_xml_node_rid_styles_tg ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                value = lv_xml_node_ridx_id ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                value = lc_xml_node_rid_theme_tp ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                value = lc_xml_node_rid_theme_tg ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_xml_node_ridx_id }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_theme_tp }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rid_theme_tg }"/>| ).
 
+  " Relationship node
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+  lv_size = lv_size + 1.
+  lv_syindex = lv_size.
+  SHIFT lv_syindex RIGHT DELETING TRAILING space.
+  SHIFT lv_syindex LEFT DELETING LEADING space.
+  lv_xml_node_ridx_id = lc_xml_node_ridx_id.
+  REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_id WITH lv_syindex.
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                value = lv_xml_node_ridx_id ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                value = lc_xml_node_rid_styles_tp ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                value = lc_xml_node_rid_styles_tg ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_xml_node_ridx_id }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_styles_tp  }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rid_styles_tg }"/>| ).
 
 
   lv_size = excel->get_worksheets_size( ).
 
   DO lv_size TIMES.
     " Relationship node
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-    parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+
     lv_xml_node_ridx_id = lc_xml_node_ridx_id.
     lv_xml_node_ridx_tg = lc_xml_node_ridx_tg.
     lv_syindex = sy-index.
@@ -3471,41 +4661,88 @@ method CREATE_XL_RELATIONSHIPS.
     SHIFT lv_syindex LEFT DELETING LEADING space.
     REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_id WITH lv_syindex.
     REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_tg WITH lv_syindex.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-    value = lv_xml_node_ridx_id ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-    value = lc_xml_node_rid_sheet_tp ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-    value = lv_xml_node_ridx_tg ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_xml_node_ridx_id ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_sheet_tp ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                  value = lv_xml_node_ridx_tg ).
+*    lo_element_root->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_xml_node_ridx_id }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_sheet_tp }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_xml_node_ridx_tg }"/>| ).
+
   ENDDO.
 
   " Relationship node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
   ADD 3 TO lv_size.
   lv_syindex = lv_size.
   SHIFT lv_syindex RIGHT DELETING TRAILING space.
   SHIFT lv_syindex LEFT DELETING LEADING space.
   lv_xml_node_ridx_id = lc_xml_node_ridx_id.
   REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_id WITH lv_syindex.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                value = lv_xml_node_ridx_id ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                value = lc_xml_node_rid_shared_tp ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                value = lc_xml_node_rid_shared_tg ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                value = lv_xml_node_ridx_id ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                value = lc_xml_node_rid_shared_tp ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                value = lc_xml_node_rid_shared_tg ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_xml_node_ridx_id }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_shared_tp }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rid_shared_tg }"/>| ).
+
+  IF add_macro = abap_true.
+    lv_size = excel->get_worksheets_size( ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+    ADD 4 TO lv_size.
+    lv_syindex = lv_size.
+    SHIFT lv_syindex RIGHT DELETING TRAILING space.
+    SHIFT lv_syindex LEFT DELETING LEADING space.
+    lv_xml_node_ridx_id = lc_xml_node_ridx_id.
+    REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_id WITH lv_syindex.
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_xml_node_ridx_id ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_vba_tp ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                  value = lc_xml_node_rid_vba_tg ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_xml_node_ridx_id }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_vba_tp }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lc_xml_node_rid_vba_tg }"/>| ).
+  ENDIF.
+
+  lo_ostream->write_string( |</{ lc_xml_node_relationships }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
-endmethod.
+ENDMETHOD.
 
 
 METHOD create_xl_sharedstrings.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_sst         TYPE string VALUE 'sst',
@@ -3572,46 +4809,82 @@ METHOD create_xl_sharedstrings.
     add 1 to lv_count.
   ENDLOOP.
 
-
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
+
 
 **********************************************************************
 * STEP 3: Create main node
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_sst
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_ns ).
-  lo_element_root->set_attribute_ns( name  = lc_xml_attr_count
-                                     value = lv_count_str ).
-  lo_element_root->set_attribute_ns( name  = lc_xml_attr_uniquecount
-                                     value = lv_uniquecount_str ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_sst
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_ns ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_count
+*                                     value = lv_count_str ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_uniquecount
+*                                     value = lv_uniquecount_str ).
 
-**********************************************************************
-* STEP 4: Create subnode
+  lo_ostream->write_string( |<{ lc_xml_node_sst }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_ns }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_count_str }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_uniquecount }="{ lv_uniquecount_str }">| ).
+
+*
+***********************************************************************
+** STEP 4: Create subnode
   LOOP AT shared_strings ASSIGNING <fs_sheet_string>.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_si
-                                                     parent = lo_document ).
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_t
-                                                         parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_si }>| ).
+
+*    lo_element = lo_document->create_simple_element( name   =
+*                                                     parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_t
+*                                                         parent = lo_document ).
+
 *    if <fs_sheet_string>-string_type EQ 's_leading_blanks'.
     IF <fs_sheet_string>-string_value IS NOT INITIAL AND <fs_sheet_string>-string_value(1) EQ ` `.
-      lo_sub_element->set_attribute( name = 'space' namespace = 'xml' value = 'preserve' ).
-    ENDIF.
-    lo_sub_element->set_value( value = <fs_sheet_string>-string_value ).
-    lo_element->append_child( new_child = lo_sub_element ).
-    lo_element_root->append_child( new_child = lo_element ).
-  ENDLOOP.
+*      lo_sub_element->set_attribute( name = 'space' namespace = 'xml' value = 'preserve' ).
 
-**********************************************************************
-* STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_t } xml.space = "preserve">| ).
+    ELSE.
+      lo_ostream->write_string( |<{ lc_xml_node_t }>| ).
+    ENDIF.
+*    lo_sub_element->set_value( value = <fs_sheet_string>-string_value ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( <fs_sheet_string>-string_value ) }| ).
+*    lo_element->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_t }>| ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_si }>| ).
+  ENDLOOP.
+*
+***********************************************************************
+** STEP 5: Create xstring stream
+*  ep_content = render_xml_document( lo_document ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_sst }>| ).
 
 ENDMETHOD.
 
 
 METHOD create_xl_sheet.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
+  DATA: lc_xml_attr_codename      TYPE string VALUE 'codeName'.
+
 *--------------------------------------------------------------------*
 * issue #330   - Adding ColorScale conditional formatting
 *              - Ivan Femia,                                2014-08-25
@@ -3857,90 +5130,144 @@ METHOD create_xl_sheet.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 ***********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_worksheet
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:r'
-                                     value = lc_xml_node_r_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:mc'
-                                     value = lc_xml_node_comp_ns ).
-  lo_element_root->set_attribute_ns( name  = 'mc:Ignorable'
-                                     value = lc_xml_node_comp_pref ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:x14ac'
-                                     value = lc_xml_node_ig_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_worksheet
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:r'
+*                                     value = lc_xml_node_r_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:mc'
+*                                     value = lc_xml_node_comp_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'mc:Ignorable'
+*                                     value = lc_xml_node_comp_pref ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:x14ac'
+*                                     value = lc_xml_node_ig_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_worksheet }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_ns }"| ).
+  lo_ostream->write_string( | xmlns:r="{ lc_xml_node_r_ns }"| ).
+  lo_ostream->write_string( | xmlns:mc="{ lc_xml_node_comp_ns }"| ).
+  lo_ostream->write_string( | mc:Ignorable="{ lc_xml_node_comp_pref }"| ).
+  lo_ostream->write_string( | xmlns:x14ac="{ lc_xml_node_ig_ns }">| ).
 
 
 **********************************************************************
 * STEP 4: Create subnodes
   " sheetPr
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetpr
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetpr
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_sheetpr }| ).
+
+  IF add_macro = abap_true.
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_codename
+*                                  value = io_worksheet->zif_excel_sheet_vba_project~codename_pr ).
+    lo_ostream->write_string( | { lc_xml_attr_codename }="{ io_worksheet->zif_excel_sheet_vba_project~codename_pr }"| ).
+  ENDIF.
+
+  lo_autofilters = excel->get_autofilters_reference( ).
+  lo_autofilter  = lo_autofilters->get( io_worksheet = io_worksheet ).
+* If we filter we need to set the filter mode to 1.
+*      lo_element_2 = lo_document->find_from_name( name   = lc_xml_node_sheetpr ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_filtermode
+*                                      value = '1' ).
+  IF lo_autofilter IS BOUND.
+    lt_values = lo_autofilter->get_values( ) .
+    IF lt_values IS NOT INITIAL.
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_filtermode
+*                                      value = '1' ).
+      lo_ostream->write_string( | { lc_xml_attr_filtermode }="1"| ).
+    ENDIF.
+  ENDIF.
+
+  lo_ostream->write_string( |>| ).
+
+
   " TODO tabColor
   IF io_worksheet->tabcolor IS NOT INITIAL.
-    lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_tabcolor
-                                                       parent = lo_element ).
+*    lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_tabcolor
+*                                                       parent = lo_element ).
 * Theme not supported yet - start with RGB
     lv_value = io_worksheet->tabcolor-rgb.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_tabcolor_rgb
-                                    value = lv_value ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_tabcolor_rgb
+*                                    value = lv_value ).
+    lo_ostream->write_string( |<{ lc_xml_node_tabcolor }| ).
+    lo_ostream->write_string( | { lc_xml_attr_tabcolor_rgb }="{ lv_value }"/>| ).
   ENDIF.
 
   " outlinePr
-  lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_outlinepr
-                                                     parent = lo_document ).
+*  lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_outlinepr
+*                                                     parent = lo_document ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_outlinepr }| ).
+
 
   lv_value = io_worksheet->zif_excel_sheet_properties~summarybelow.
   CONDENSE lv_value.
-  lo_element_2->set_attribute_ns( name  = lc_xml_attr_summarybelow
-                                  value = lv_value ).
+*  lo_element_2->set_attribute_ns( name  = lc_xml_attr_summarybelow
+*                                  value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_summarybelow }="{ lv_value }"| ).
 
   lv_value = io_worksheet->zif_excel_sheet_properties~summaryright.
   CONDENSE lv_value.
-  lo_element_2->set_attribute_ns( name  = lc_xml_attr_summaryright
-                                  value = lv_value ).
+*  lo_element_2->set_attribute_ns( name  = lc_xml_attr_summaryright
+*                                  value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_summaryright }="{ lv_value }"/>| ).
 
-  lo_element->append_child( new_child = lo_element_2 ).
+*  lo_element->append_child( new_child = lo_element_2 ).
 
   IF io_worksheet->sheet_setup->fit_to_page IS NOT INITIAL.
-    lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_pagesetuppr
-                                                     parent = lo_document ).
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_fittopage
-                                  value = `1` ).
-    lo_element->append_child( new_child = lo_element_2 ). " pageSetupPr node
+*    lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_pagesetuppr
+*                                                     parent = lo_document ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_fittopage
+*                                  value = `1` ).
+*    lo_element->append_child( new_child = lo_element_2 ). " pageSetupPr node
+    lo_ostream->write_string( |<{ lc_xml_node_pagesetuppr }| ).
+    lo_ostream->write_string( | { lc_xml_attr_fittopage }="1"/>| ).
   ENDIF.
 
-  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |</{ lc_xml_node_sheetpr }>| ).
+
+*  lo_element_root->append_child( new_child = lo_element ).
+
 
   " dimension node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_dimension
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_dimension
+*                                                   parent = lo_document ).
   lv_value = io_worksheet->get_dimension_range( ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_ref
-                                value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_ref
+*                                value = lv_value ).
+*  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( |<{ lc_xml_node_dimension }| ).
+  lo_ostream->write_string( | { lc_xml_attr_ref }="{ lv_value }"/>| ).
 
   " sheetViews node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetviews
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetviews
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_sheetviews }>| ).
   " sheetView node
-  lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_sheetview
-                                                     parent = lo_document ).
+*  lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_sheetview
+*                                                     parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_sheetview }| ).
+
   IF io_worksheet->zif_excel_sheet_properties~show_zeros EQ abap_false.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showzeros
-                                    value = '0' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showzeros
+*                                    value = '0' ).
+    lo_ostream->write_string( | { lc_xml_attr_showzeros }="0"| ).
   ENDIF.
   IF   iv_active = abap_true
     OR io_worksheet->zif_excel_sheet_properties~selected EQ abap_true.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_tabselected
-                                    value = '1' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_tabselected
+*                                    value = '1' ).
+    lo_ostream->write_string( | { lc_xml_attr_tabselected }="1"| ).
   ELSE.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_tabselected
-                                    value = '0' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_tabselected
+*                                    value = '0' ).
+    lo_ostream->write_string( | { lc_xml_attr_tabselected }="0"| ).
   ENDIF.
   " Zoom scale
   IF io_worksheet->zif_excel_sheet_properties~zoomscale GT 400.
@@ -3950,8 +5277,9 @@ METHOD create_xl_sheet.
   ENDIF.
   lv_value = io_worksheet->zif_excel_sheet_properties~zoomscale.
   CONDENSE lv_value.
-  lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscale
-                                    value = lv_value ).
+*  lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscale
+*                                    value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_zoomscale }="{ lv_value }"| ).
   IF io_worksheet->zif_excel_sheet_properties~zoomscale_normal NE 0.
     IF io_worksheet->zif_excel_sheet_properties~zoomscale_normal GT 400.
       io_worksheet->zif_excel_sheet_properties~zoomscale_normal = 400.
@@ -3960,8 +5288,9 @@ METHOD create_xl_sheet.
     ENDIF.
     lv_value = io_worksheet->zif_excel_sheet_properties~zoomscale_normal.
     CONDENSE lv_value.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscalenormal
-                                    value = lv_value ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscalenormal
+*                                    value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_zoomscalenormal }="{ lv_value }"| ).
   ENDIF.
   IF io_worksheet->zif_excel_sheet_properties~zoomscale_pagelayoutview NE 0.
     IF io_worksheet->zif_excel_sheet_properties~zoomscale_pagelayoutview GT 400.
@@ -3971,8 +5300,9 @@ METHOD create_xl_sheet.
     ENDIF.
     lv_value = io_worksheet->zif_excel_sheet_properties~zoomscale_pagelayoutview.
     CONDENSE lv_value.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscalepageview
-                                    value = lv_value ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscalepageview
+*                                    value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_zoomscalepageview }="{ lv_value }"| ).
   ENDIF.
   IF io_worksheet->zif_excel_sheet_properties~zoomscale_sheetlayoutview NE 0.
     IF io_worksheet->zif_excel_sheet_properties~zoomscale_sheetlayoutview GT 400.
@@ -3982,28 +5312,36 @@ METHOD create_xl_sheet.
     ENDIF.
     lv_value = io_worksheet->zif_excel_sheet_properties~zoomscale_sheetlayoutview.
     CONDENSE lv_value.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscalesheetview
-                                    value = lv_value ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_zoomscalesheetview
+*                                    value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_zoomscalesheetview }="{ lv_value }"| ).
   ENDIF.
-  lo_element_2->set_attribute_ns( name  = lc_xml_attr_workbookviewid
-                                          value = '0' ).
+*  lo_element_2->set_attribute_ns( name  = lc_xml_attr_workbookviewid
+*                                          value = '0' ).
+  lo_ostream->write_string( | { lc_xml_attr_workbookviewid }="0"| ).
   " showGridLines attribute
   IF io_worksheet->show_gridlines = abap_true.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showgridlines
-                                            value = '1' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showgridlines
+*                                            value = '1' ).
+    lo_ostream->write_string( | { lc_xml_attr_showgridlines }="1"| ).
   ELSE.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showgridlines
-                                            value = '0' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showgridlines
+*                                            value = '0' ).
+    lo_ostream->write_string( | { lc_xml_attr_showgridlines }="0"| ).
   ENDIF.
 
   " showRowColHeaders attribute
   IF io_worksheet->show_rowcolheaders = abap_true.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showrowcolheaders
-                                            value = '1' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showrowcolheaders
+*                                            value = '1' ).
+    lo_ostream->write_string( | { lc_xml_attr_showrowcolheaders }="1"| ).
   ELSE.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showrowcolheaders
-                                            value = '0' ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_showrowcolheaders
+*                                            value = '0' ).
+    lo_ostream->write_string( | { lc_xml_attr_showrowcolheaders }="0"| ).
   ENDIF.
+
+  lo_ostream->write_string( |>| ).
 
 
   " freeze panes
@@ -4011,53 +5349,57 @@ METHOD create_xl_sheet.
                                  ep_column = lv_freeze_cell_column ).
 
   IF lv_freeze_cell_row IS NOT INITIAL AND lv_freeze_cell_column IS NOT INITIAL.
-    lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_pane
-                                                       parent = lo_element_2 ).
+*    lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_pane
+*                                                       parent = lo_element_2 ).
+    lo_ostream->write_string( |<{ lc_xml_node_pane }| ).
 
     IF lv_freeze_cell_row > 1.
       lv_value = lv_freeze_cell_row - 1.
       CONDENSE lv_value.
-      lo_element_3->set_attribute_ns( name  = 'ySplit'
-                                  value = lv_value ).
+*      lo_element_3->set_attribute_ns( name  = 'ySplit'
+*                                  value = lv_value ).
+      lo_ostream->write_string( | ySplit="{ lv_value }"| ).
     ENDIF.
 
     IF lv_freeze_cell_column > 1.
       lv_value = lv_freeze_cell_column - 1.
       CONDENSE lv_value.
-      lo_element_3->set_attribute_ns( name  = 'xSplit'
-                                  value = lv_value ).
+*      lo_element_3->set_attribute_ns( name  = 'xSplit'
+*                                  value = lv_value ).
+      lo_ostream->write_string( | xSplit="{ lv_value }"| ).
     ENDIF.
 
     lv_freeze_cell_column_alpha = zcl_excel_common=>convert_column2alpha( ip_column = lv_freeze_cell_column ).
     lv_value = zcl_excel_common=>number_to_excel_string( ip_value = lv_freeze_cell_row  ).
     CONCATENATE lv_freeze_cell_column_alpha lv_value INTO lv_value.
-    lo_element_3->set_attribute_ns( name  = 'topLeftCell'
-                                  value = lv_value ).
-
-    lo_element_3->set_attribute_ns( name  = 'activePane'
-                                  value = 'bottomRight' ).
-
-    lo_element_3->set_attribute_ns( name  = 'state'
-                                  value = 'frozen' ).
-
-    lo_element_2->append_child( new_child = lo_element_3 ).
+*    lo_element_3->set_attribute_ns( name  = 'topLeftCell'
+*                                  value = lv_value ).
+    lo_ostream->write_string( | topLeftCell="{ lv_value }"| ).
+*    lo_element_3->set_attribute_ns( name  = 'activePane'
+*                                  value = 'bottomRight' ).
+    lo_ostream->write_string( | activePane="bottomRight"| ).
+*    lo_element_3->set_attribute_ns( name  = 'state'
+*                                  value = 'frozen' ).
+    lo_ostream->write_string( | state="frozen"/>| ).
+*    lo_element_2->append_child( new_child = lo_element_3 ).
   ENDIF.
   " selection node
-  lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_selection
-                                                     parent = lo_document ).
+*  lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_selection
+*                                                     parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_selection }| ).
   lv_value = io_worksheet->get_active_cell( ).
-  lo_element_3->set_attribute_ns( name  = lc_xml_attr_activecell
-                                  value = lv_value ).
-
-  lo_element_3->set_attribute_ns( name  = lc_xml_attr_sqref
-                                  value = lv_value ).
-
-  lo_element_2->append_child( new_child = lo_element_3 ). " sheetView node
-
-  lo_element->append_child( new_child = lo_element_2 ). " sheetView node
-
-  lo_element_root->append_child( new_child = lo_element ). " sheetViews node
-
+*  lo_element_3->set_attribute_ns( name  = lc_xml_attr_activecell
+*                                  value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_activecell }="{ lv_value }"| ).
+*  lo_element_3->set_attribute_ns( name  = lc_xml_attr_sqref
+*                                  value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_sqref }="{ lv_value }"/>| ).
+*  lo_element_2->append_child( new_child = lo_element_3 ). " sheetView node
+*
+*  lo_element->append_child( new_child = lo_element_2 ). " sheetView node
+  lo_ostream->write_string( |</{ lc_xml_node_sheetview }>| ).
+*  lo_element_root->append_child( new_child = lo_element ). " sheetViews node
+  lo_ostream->write_string( |</{ lc_xml_node_sheetviews }>| ).
 
   lo_column_iterator = io_worksheet->get_columns_iterator( ).
   lo_row_iterator = io_worksheet->get_rows_iterator( ).
@@ -4068,14 +5410,17 @@ METHOD create_xl_sheet.
   ENDIF.
 
   " sheetFormatPr node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetformatpr
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetformatpr
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_sheetformatpr }| ).
   " defaultRowHeight
   lo_row_default = io_worksheet->get_default_row( ).
   IF lo_row_default IS BOUND.
     IF lo_row_default->get_row_height( ) >= 0.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_customheight
-                                    value = lc_xml_attr_true ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_customheight
+*                                    value = lc_xml_attr_true ).
+      lo_ostream->write_string( | { lc_xml_attr_customheight }="{ lc_xml_attr_true }"| ).
+
       lv_value = lo_row_default->get_row_height( ).
     ELSE.
       lv_value = '12.75'.
@@ -4085,16 +5430,18 @@ METHOD create_xl_sheet.
   ENDIF.
   SHIFT lv_value RIGHT DELETING TRAILING space.
   SHIFT lv_value LEFT DELETING LEADING space.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_defaultrowheight
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_defaultrowheight
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_defaultrowheight }="{ lv_value }"| ).
   " defaultColWidth
   lo_column_default = io_worksheet->get_default_column( ).
   IF lo_column_default IS BOUND AND lo_column_default->get_width( ) >= 0.
     lv_value = lo_column_default->get_width( ).
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_defaultcolwidth
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_defaultcolwidth
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_defaultcolwidth }="{ lv_value }"| ).
   ENDIF.
 
   " outlineLevelCol
@@ -4108,66 +5455,79 @@ METHOD create_xl_sheet.
   lv_value = outline_level_col.
   SHIFT lv_value RIGHT DELETING TRAILING space.
   SHIFT lv_value LEFT DELETING LEADING space.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_outlinelevelcol
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_outlinelevelcol
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_outlinelevelcol }="{ lv_value }"/>| ).
 
-  lo_element_root->append_child( new_child = lo_element ). " sheetFormatPr node
+*  lo_element_root->append_child( new_child = lo_element ). " sheetFormatPr node
 
 * Reset column iterator
   lo_column_iterator = io_worksheet->get_columns_iterator( ).
   IF io_worksheet->zif_excel_sheet_properties~get_style( ) IS NOT INITIAL OR lo_column_iterator->has_next( ) = abap_true.
     " cols node
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_cols
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_cols
+*                                                     parent = lo_document ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_cols }>| ).
+
     " This code have to be enhanced in order to manage also column style properties
     " Now it is an out/out
     IF lo_column_iterator->has_next( ) = abap_true.
       WHILE lo_column_iterator->has_next( ) = abap_true.
         lo_column ?= lo_column_iterator->get_next( ).
         " col node
-        lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_col
-                                                           parent = lo_document ).
+*        lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_col
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_col }| ).
         lv_value = lo_column->get_column_index( ).
         SHIFT lv_value RIGHT DELETING TRAILING space.
         SHIFT lv_value LEFT DELETING LEADING space.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_min
-                                        value = lv_value ).
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_max
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_min
+*                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_max
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_min }="{ lv_value }"| ).
+        lo_ostream->write_string( | { lc_xml_attr_max }="{ lv_value }"| ).
         " Width
         IF lo_column->get_width( ) < 0.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_width
-                                          value = lc_xml_attr_defaultwidth ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_width
+*                                          value = lc_xml_attr_defaultwidth ).
+          lo_ostream->write_string( | { lc_xml_attr_width }="{ lc_xml_attr_defaultwidth }"| ).
         ELSE.
           lv_value = lo_column->get_width( ).
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_width
-                                          value = lv_value ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_width
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_width }="{ lv_value }"| ).
         ENDIF.
         " Column visibility
         IF lo_column->get_visible( ) = abap_false.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_hidden
-                                          value = lc_xml_attr_true ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_hidden
+*                                          value = lc_xml_attr_true ).
+          lo_ostream->write_string( | { lc_xml_attr_hidden }="{ lc_xml_attr_true }"| ).
         ENDIF.
         "  Auto size?
         IF lo_column->get_auto_size( ) = abap_true.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_bestfit
-                                          value = lc_xml_attr_true ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_bestfit
+*                                          value = lc_xml_attr_true ).
+          lo_ostream->write_string( | { lc_xml_attr_bestfit }="{ lc_xml_attr_true }"| ).
         ENDIF.
         " Custom width?
         IF lo_column_default IS BOUND.
           IF lo_column->get_width( ) <> lo_column_default->get_width( ).
-            lo_element_2->set_attribute_ns( name  = lc_xml_attr_customwidth
-                                            value = lc_xml_attr_true ).
-
+*            lo_element_2->set_attribute_ns( name  = lc_xml_attr_customwidth
+*                                            value = lc_xml_attr_true ).
+            lo_ostream->write_string( | { lc_xml_attr_customwidth }="{ lc_xml_attr_true }"| ).
           ENDIF.
         ELSE.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_customwidth
-                                          value = lc_xml_attr_true ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_customwidth
+*                                          value = lc_xml_attr_true ).
+          lo_ostream->write_string( | { lc_xml_attr_customwidth }="{ lc_xml_attr_true }"| ).
         ENDIF.
         " Collapsed
         IF lo_column->get_collapsed( ) = abap_true.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_collapsed
-                                          value = lc_xml_attr_true ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_collapsed
+*                                          value = lc_xml_attr_true ).
+          lo_ostream->write_string( | { lc_xml_attr_collapsed }="{ lc_xml_attr_true }"| ).
         ENDIF.
         " outlineLevel
         IF lo_column->get_outline_level( ) > 0.
@@ -4175,8 +5535,9 @@ METHOD create_xl_sheet.
 
           SHIFT lv_value RIGHT DELETING TRAILING space.
           SHIFT lv_value LEFT DELETING LEADING space.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_outlinelevel
-                                          value = lv_value ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_outlinelevel
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_outlinelevel }="{ lv_value }"| ).
         ENDIF.
         " Style
         lv_style_guid = lo_column->get_column_style_guid( ).                      "ins issue #157 -  set column style
@@ -4186,11 +5547,12 @@ METHOD create_xl_sheet.
           lv_value = ls_style_mapping-style.                                                                 "ins issue #295
           SHIFT lv_value RIGHT DELETING TRAILING space.
           SHIFT lv_value LEFT DELETING LEADING space.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_style
-                                          value = lv_value ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_style
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"| ).
         ENDIF.                                                                                              "ins issue #237
-
-        lo_element->append_child( new_child = lo_element_2 ). " col node
+        lo_ostream->write_string( |/>| ).
+*        lo_element->append_child( new_child = lo_element_2 ). " col node
       ENDWHILE.
 *    ELSE.                                                                      "del issue #157  -  set sheet style ( add missing columns
 *      IF io_worksheet->zif_excel_sheet_properties~get_style( ) IS NOT INITIAL. "del issue #157  -  set sheet style ( add missing columns
@@ -4228,27 +5590,32 @@ METHOD create_xl_sheet.
 * Now apply stylesetting ( and other defaults - I copy it from above.  Whoever programmed that seems to know what to do  :o)
       LOOP AT t_missing_columns INTO missing_column.
 * End of insertion issue #157 -  set column style
-        lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_col
-                                                           parent = lo_document ).
+*        lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_col
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_col }| ).
 *        lv_value = zcl_excel_common=>c_excel_sheet_min_col."del issue #157  -  set sheet style ( add missing columns
         lv_value = missing_column-first_column.             "ins issue #157  -  set sheet style ( add missing columns
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_min
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_min
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_min }="{ lv_value }"| ).
 *        lv_value = zcl_excel_common=>c_excel_sheet_max_col."del issue #157  -  set sheet style ( add missing columns
         lv_value = missing_column-last_column.              "ins issue #157  -  set sheet style ( add missing columns
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_max
-                                        value = lv_value ).
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_width
-                                        value = lc_xml_attr_defaultwidth ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_max
+*                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_width
+*                                        value = lc_xml_attr_defaultwidth ).
+        lo_ostream->write_string( | { lc_xml_attr_max }="{ lv_value }"| ).
+        lo_ostream->write_string( | { lc_xml_attr_width }="{ lc_xml_attr_defaultwidth }"| ).
         lv_style_guid = io_worksheet->zif_excel_sheet_properties~get_style( ).
         READ TABLE styles_mapping INTO ls_style_mapping WITH KEY guid = lv_style_guid.
         lv_value = ls_style_mapping-style.
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_style
-                                        value = lv_value ).
-        lo_element->append_child( new_child = lo_element_2 ). " col node
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_style
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"/>| ).
+*        lo_element->append_child( new_child = lo_element_2 ). " col node
       ENDLOOP.      "ins issue #157  -  set sheet style ( add missing columns
 
     ENDIF.
@@ -4256,155 +5623,194 @@ METHOD create_xl_sheet.
 * issue #367 add feature hide columns from
 *--------------------------------------------------------------------*
     IF io_worksheet->zif_excel_sheet_properties~hide_columns_from IS NOT INITIAL.
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_col
-                                                         parent = lo_document ).
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_col
+*                                                         parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_col }| ).
       lv_value = zcl_excel_common=>convert_column2int( io_worksheet->zif_excel_sheet_properties~hide_columns_from ).
       CONDENSE lv_value NO-GAPS.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_min
-                                      value = lv_value ).
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_max
-                                      value = '16384' ).
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_hidden
-                                      value = '1' ).
-      lo_element->append_child( new_child = lo_element_2 ). " col node
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_min
+*                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_max
+*                                      value = '16384' ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_hidden
+*                                      value = '1' ).
+*      lo_element->append_child( new_child = lo_element_2 ). " col node
+      lo_ostream->write_string( | { lc_xml_attr_min }="{ lv_value }"| ).
+      lo_ostream->write_string( | { lc_xml_attr_max }="16384"| ).
+      lo_ostream->write_string( | { lc_xml_attr_hidden }="1"/>| ).
     ENDIF.
 
-    lo_element_root->append_child( new_child = lo_element ). " cols node
+    lo_ostream->write_string( |</{ lc_xml_node_cols }>| ).
+
+*    lo_element_root->append_child( new_child = lo_element ). " cols node
   ENDIF.
 
 *--------------------------------------------------------------------*
 * Sheet content - use own method to create this
 *--------------------------------------------------------------------*
-  lo_element = create_xl_sheet_sheet_data( io_worksheet         = io_worksheet
-                                           io_document          = lo_document )  .
+*  lo_element =
+  create_xl_sheet_sheet_data( lo_ostream           = lo_ostream
+                              io_worksheet         = io_worksheet ).
 
   lo_autofilters = excel->get_autofilters_reference( ).
-  lo_autofilter  = lo_autofilters->get( io_worksheet = io_worksheet ) .
-  lo_element_root->append_child( new_child = lo_element ). " sheetData node
+  lo_autofilter  = lo_autofilters->get( io_worksheet = io_worksheet ).
+*  lo_element_root->append_child( new_child = lo_element ). " sheetData node
 
 *< Begin of insertion Issue #572 - Protect sheet with filter caused Excel error
 * Autofilter must be set AFTER sheet protection in XML
   IF io_worksheet->zif_excel_sheet_protection~protected EQ abap_true.
     " sheetProtection node
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetprotection
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheetprotection
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_sheetprotection }| ).
+
     MOVE io_worksheet->zif_excel_sheet_protection~password TO lv_value.
     IF lv_value IS NOT INITIAL.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_password
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_password
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_password }="{ lv_value }"| ).
     ENDIF.
     lv_value = io_worksheet->zif_excel_sheet_protection~auto_filter.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_autofilter
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_autofilter
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_autofilter }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~delete_columns.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_deletecolumns
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_deletecolumns
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_deletecolumns }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~delete_rows.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_deleterows
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_deleterows
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_deleterows }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~format_cells.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_formatcells
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_formatcells
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_formatcells }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~format_columns.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_formatcolumns
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_formatcolumns
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_formatcolumns }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~format_rows.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_formatrows
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_formatrows
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_formatrows }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~insert_columns.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_insertcolumns
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_insertcolumns
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_insertcolumns }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~insert_hyperlinks.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_inserthyperlinks
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_inserthyperlinks
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_inserthyperlinks }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~insert_rows.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_insertrows
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_insertrows
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_insertrows }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~objects.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_objects
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_objects
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_objects }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~pivot_tables.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_pivottables
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_pivottables
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_pivottables }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~scenarios.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_scenarios
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_scenarios
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_scenarios }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~select_locked_cells.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_selectlockedcells
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_selectlockedcells
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_selectlockedcells }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~select_unlocked_cells.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_selectunlockedcell
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_selectunlockedcell
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_selectunlockedcell }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~sheet.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_sheet
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_sheet
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_sheet }="{ lv_value }"| ).
     lv_value = io_worksheet->zif_excel_sheet_protection~sort.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_sort
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_sort
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_sort }="{ lv_value }"/>| ).
 
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
 *> End of insertion Issue #572 - Protect sheet with filter caused Excel error
 
   IF lo_autofilter IS BOUND.
 * Create node autofilter
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_autofilter
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_autofilter
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_autofilter }| ).
     lv_ref = lo_autofilter->get_filter_range( ) .
     CONDENSE lv_ref NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_ref
-                                  value = lv_ref ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_ref
+*                                  value = lv_ref ).
+    lo_ostream->write_string( | { lc_xml_attr_ref }="{ lv_ref }">| ).
     lt_values = lo_autofilter->get_values( ) .
     IF lt_values IS NOT INITIAL.
-* If we filter we need to set the filter mode to 1.
-      lo_element_2 = lo_document->find_from_name( name   = lc_xml_node_sheetpr ).
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_filtermode
-                                      value = '1' ).
+
 * Create node filtercolumn
       CLEAR lv_column.
       LOOP AT lt_values INTO ls_values.
         IF ls_values-column <> lv_column.
           IF lv_column IS NOT INITIAL.
-            lo_element_2->append_child( new_child = lo_element_3 ).
-            lo_element->append_child( new_child = lo_element_2 ).
+
+*            lo_element_2->append_child( new_child = lo_element_3 ).
+*            lo_element->append_child( new_child = lo_element_2 ).
+
           ENDIF.
-          lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_filtercolumn
-                                                             parent = lo_element ).
+*          lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_filtercolumn
+*                                                             parent = lo_element ).
+          lo_ostream->write_string( |<{ lc_xml_node_filtercolumn }| ).
           lv_column   = ls_values-column - lo_autofilter->filter_area-col_start.
           lv_value = lv_column.
           CONDENSE lv_value NO-GAPS.
-          lo_element_2->set_attribute_ns( name  = lc_xml_attr_colid
-                                          value = lv_value ).
-          lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_filters
-                                                             parent = lo_element_2 ).
+*          lo_element_2->set_attribute_ns( name  = lc_xml_attr_colid
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_colid }="{ lv_value }">| ).
+*          lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_filters
+*                                                             parent = lo_element_2 ).
+          lo_ostream->write_string( |<{ lc_xml_node_filters }>| ).
           lv_column = ls_values-column.
         ENDIF.
-        lo_element_4 = lo_document->create_simple_element( name   = lc_xml_node_filter
-                                                           parent = lo_element_3 ).
-        lo_element_4->set_attribute_ns( name  = lc_xml_attr_val
-                                        value = ls_values-value ).
-        lo_element_3->append_child( new_child = lo_element_4 ). " value node
+*        lo_element_4 = lo_document->create_simple_element( name   = lc_xml_node_filter
+*                                                           parent = lo_element_3 ).
+*        lo_element_4->set_attribute_ns( name  = lc_xml_attr_val
+*                                        value = ls_values-value ).
+*        lo_element_3->append_child( new_child = lo_element_4 ). " value node
+        lo_ostream->write_string( |<{ lc_xml_node_filter }| ).
+        lo_ostream->write_string( | { lc_xml_attr_val }="{ ls_values-value }"/>| ).
+
       ENDLOOP.
-      lo_element_2->append_child( new_child = lo_element_3 ).
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_2->append_child( new_child = lo_element_3 ).
+      lo_ostream->write_string( |</{ lc_xml_node_filters }>| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_filtercolumn }>| ).
+
+*      lo_element->append_child( new_child = lo_element_2 ).
     ENDIF.
-    lo_element_root->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( |</{ lc_xml_node_autofilter }>| ).
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
 
 *< Comment for Issue #572 - Protect sheet with filter caused Excel error
@@ -4488,23 +5894,31 @@ METHOD create_xl_sheet.
   " Merged cells
   lt_range_merge = io_worksheet->get_merge( ).
   IF lt_range_merge IS NOT INITIAL.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_mergecells
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_mergecells
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_mergecells }| ).
     DESCRIBE TABLE lt_range_merge LINES merge_count.
     lv_value = merge_count.
     CONDENSE lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_count
-                                  value = lv_value ).
-    LOOP AT lt_range_merge ASSIGNING <fs_range_merge>.
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_mergecell
-                                                         parent = lo_document ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_count
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_value }">| ).
 
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_ref
-                                      value = <fs_range_merge> ).
-      lo_element->append_child( new_child = lo_element_2 ).
-      lo_element_root->append_child( new_child = lo_element ).
+    LOOP AT lt_range_merge ASSIGNING <fs_range_merge>.
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_mergecell
+*                                                         parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_mergecell }| ).
+
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_ref
+*                                      value = <fs_range_merge> ).
+      lo_ostream->write_string( | { lc_xml_attr_ref }="{ <fs_range_merge> }"/>| ).
+
+*      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_root->append_child( new_child = lo_element ).
       io_worksheet->delete_merge( ).
     ENDLOOP.
+
+    lo_ostream->write_string( |</{ lc_xml_node_mergecells }>| ).
   ENDIF.
 
   " Conditional formatting node
@@ -4514,33 +5928,40 @@ METHOD create_xl_sheet.
     IF lo_style_cond->rule IS INITIAL.
       CONTINUE.
     ENDIF.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_condformatting
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_condformatting
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_condformatting }| ).
+
     lv_value = lo_style_cond->get_dimension_range( ) .
-    lo_element->set_attribute_ns( name  = lc_xml_attr_sqref
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_sqref
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_sqref }="{ lv_value }">| ).
 
     " cfRule node
-    lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_cfrule
-                                                     parent = lo_document ).
+*    lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_cfrule
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_cfrule }| ).
     lv_value = lo_style_cond->rule.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_type
-                                    value = lv_value ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_type
+*                                    value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lv_value }"| ).
     lv_value = lo_style_cond->priority.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element_2->set_attribute_ns( name  = lc_xml_attr_priority
-                                    value = lv_value ).
+*    lo_element_2->set_attribute_ns( name  = lc_xml_attr_priority
+*                                    value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_priority }="{ lv_value }"| ).
 
     CASE lo_style_cond->rule.
         " Start >> Databar by Albert Lladanosa
       WHEN zcl_excel_style_cond=>c_rule_databar.
-
+        lo_ostream->write_string( |>| ).
         ls_databar = lo_style_cond->mode_databar.
 
         CLEAR lt_cfvo.
-        lo_element_3 = lo_document->create_simple_element( name = lc_xml_node_databar
-                                                           parent = lo_document ).
+*        lo_element_3 = lo_document->create_simple_element( name = lc_xml_node_databar
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_databar }>| ).
 
         MOVE ls_databar-cfvo1_value TO ls_cfvo-value.
         MOVE ls_databar-cfvo1_type  TO ls_cfvo-type.
@@ -4552,35 +5973,43 @@ METHOD create_xl_sheet.
 
         LOOP AT lt_cfvo INTO ls_cfvo.
           " cfvo node
-          lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_cfvo
-                                                             parent = lo_document ).
+*          lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_cfvo
+*                                                             parent = lo_document ).
+          lo_ostream->write_string( |<{ lc_xml_node_cfvo }| ).
           lv_value = ls_cfvo-type.
-          lo_element_4->set_attribute_ns( name = lc_xml_attr_type
-                                          value = lv_value ).
+*          lo_element_4->set_attribute_ns( name = lc_xml_attr_type
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_type }="{ lv_value }"| ).
           lv_value = ls_cfvo-value.
-          lo_element_4->set_attribute_ns( name = lc_xml_attr_val
-                                          value = lv_value ).
-          lo_element_3->append_child( new_child = lo_element_4 ). " cfvo node
+*          lo_element_4->set_attribute_ns( name = lc_xml_attr_val
+*                                          value = lv_value ).
+*          lo_element_3->append_child( new_child = lo_element_4 ). " cfvo node
+          lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
         ENDLOOP.
 
-        lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_color
-                                                           parent = lo_document ).
+*        lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_color
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_color }| ).
         lv_value = ls_databar-colorrgb.
-        lo_element_4->set_attribute_ns( name = lc_xml_attr_tabcolor_rgb
-                                        value = lv_value ).
 
-        lo_element_3->append_child( new_child = lo_element_4 ). " color node
+*        lo_element_4->set_attribute_ns( name = lc_xml_attr_tabcolor_rgb
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_tabcolor_rgb }="{ lv_value }"/>| ).
 
-        lo_element_2->append_child( new_child = lo_element_3 ). " databar node
+*        lo_element_3->append_child( new_child = lo_element_4 ). " color node
+
+*        lo_element_2->append_child( new_child = lo_element_3 ). " databar node
+        lo_ostream->write_string( |</{ lc_xml_node_databar }>| ).
         " End << Databar by Albert Lladanosa
 
       WHEN zcl_excel_style_cond=>c_rule_colorscale.
-
+        lo_ostream->write_string( |>| ).
         ls_colorscale = lo_style_cond->mode_colorscale.
 
         CLEAR: lt_cfvo, lt_colors.
-        lo_element_3 = lo_document->create_simple_element( name = lc_xml_node_colorscale
-                                                           parent = lo_document ).
+*        lo_element_3 = lo_document->create_simple_element( name = lc_xml_node_colorscale
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_colorscale }>| ).
 
         MOVE ls_colorscale-cfvo1_value TO ls_cfvo-value.
         MOVE ls_colorscale-cfvo1_type  TO ls_cfvo-type.
@@ -4605,15 +6034,18 @@ METHOD create_xl_sheet.
           ENDIF.
 
           " cfvo node
-          lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_cfvo
-                                                             parent = lo_document ).
+*          lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_cfvo
+*                                                             parent = lo_document ).
+          lo_ostream->write_string( |<{ lc_xml_node_cfvo }| ).
           lv_value = ls_cfvo-type.
-          lo_element_4->set_attribute_ns( name = lc_xml_attr_type
-                                          value = lv_value ).
+*          lo_element_4->set_attribute_ns( name = lc_xml_attr_type
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_type }="{ lv_value }"| ).
           lv_value = ls_cfvo-value.
-          lo_element_4->set_attribute_ns( name = lc_xml_attr_val
-                                          value = lv_value ).
-          lo_element_3->append_child( new_child = lo_element_4 ). " cfvo node
+*          lo_element_4->set_attribute_ns( name = lc_xml_attr_val
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
+*          lo_element_3->append_child( new_child = lo_element_4 ). " cfvo node
         ENDLOOP.
         LOOP AT lt_colors INTO ls_colors.
 
@@ -4621,35 +6053,42 @@ METHOD create_xl_sheet.
             CONTINUE.
           ENDIF.
 
-          lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_color
-                                                             parent = lo_document ).
+*          lo_element_4 = lo_document->create_simple_element( name = lc_xml_node_color
+*                                                             parent = lo_document ).
+          lo_ostream->write_string( |<{ lc_xml_node_color }| ).
           lv_value = ls_colors-colorrgb.
-          lo_element_4->set_attribute_ns( name = lc_xml_attr_tabcolor_rgb
-                                          value = lv_value ).
-
-          lo_element_3->append_child( new_child = lo_element_4 ). " color node
+*          lo_element_4->set_attribute_ns( name = lc_xml_attr_tabcolor_rgb
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_tabcolor_rgb }="{ lv_value }"/>| ).
+*          lo_element_3->append_child( new_child = lo_element_4 ). " color node
         ENDLOOP.
 
-        lo_element_2->append_child( new_child = lo_element_3 ). " databar node
+*        lo_element_2->append_child( new_child = lo_element_3 ). " databar node
+        lo_ostream->write_string( |</{ lc_xml_node_colorscale }>| ).
 
       WHEN zcl_excel_style_cond=>c_rule_iconset.
-
+        lo_ostream->write_string( |>| ).
         ls_iconset = lo_style_cond->mode_iconset.
 
         CLEAR lt_cfvo.
         " iconset node
-        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_iconset
-                                                           parent = lo_document ).
+*        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_iconset
+*                                                           parent = lo_document ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_iconset }| ).
         IF ls_iconset-iconset NE zcl_excel_style_cond=>c_iconset_3trafficlights.
           lv_value = ls_iconset-iconset.
-          lo_element_3->set_attribute_ns( name  = lc_xml_attr_iconset
-                                          value = lv_value ).
+*          lo_element_3->set_attribute_ns( name  = lc_xml_attr_iconset
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_iconset }="{ lv_value }"| ).
         ENDIF.
 
         " Set the showValue attribute
         lv_value = ls_iconset-showvalue.
-        lo_element_3->set_attribute_ns( name  = lc_xml_attr_showvalue
-                                        value = lv_value ).
+*        lo_element_3->set_attribute_ns( name  = lc_xml_attr_showvalue
+*                                        value = lv_value ).
+
+        lo_ostream->write_string( | { lc_xml_attr_showvalue }="{ lv_value }">| ).
 
         CASE ls_iconset-iconset.
           WHEN zcl_excel_style_cond=>c_iconset_3trafficlights2 OR
@@ -4712,42 +6151,62 @@ METHOD create_xl_sheet.
 
         LOOP AT lt_cfvo INTO ls_cfvo.
           " cfvo node
-          lo_element_4 = lo_document->create_simple_element( name   = lc_xml_node_cfvo
-                                                             parent = lo_document ).
+*          lo_element_4 = lo_document->create_simple_element( name   = lc_xml_node_cfvo
+*                                                             parent = lo_document ).
+
+          lo_ostream->write_string( |<{ lc_xml_node_cfvo }| ).
+
           lv_value = ls_cfvo-type.
-          lo_element_4->set_attribute_ns( name  = lc_xml_attr_type
-                                          value = lv_value ).
+*          lo_element_4->set_attribute_ns( name  = lc_xml_attr_type
+*                                          value = lv_value ).
+          lo_ostream->write_string( | { lc_xml_attr_type }="{ lv_value }"| ).
           lv_value = ls_cfvo-value.
-          lo_element_4->set_attribute_ns( name  = lc_xml_attr_val
-                                          value = lv_value ).
-          lo_element_3->append_child( new_child = lo_element_4 ). " cfvo node
+*          lo_element_4->set_attribute_ns( name  = lc_xml_attr_val
+*                                          value = lv_value ).
+*          lo_element_3->append_child( new_child = lo_element_4 ). " cfvo node
+          lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
         ENDLOOP.
 
-
-        lo_element_2->append_child( new_child = lo_element_3 ). " iconset node
+        lo_ostream->write_string( |</{ lc_xml_node_iconset }>| ).
+*        lo_element_2->append_child( new_child = lo_element_3 ). " iconset node
 
       WHEN zcl_excel_style_cond=>c_rule_cellis.
         ls_cellis = lo_style_cond->mode_cellis.
         READ TABLE me->styles_cond_mapping INTO ls_style_cond_mapping WITH KEY guid = ls_cellis-cell_style.
         lv_value = ls_style_cond_mapping-dxf.
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_dxfid }="{ lv_value }"| ).
         lv_value = ls_cellis-operator.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_operator
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_operator
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_operator }="{ lv_value }">| ).
         " formula node
-        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula
-                                                           parent = lo_document ).
+*        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula
+*                                                           parent = lo_document ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_formula }>| ).
+
         lv_value = ls_cellis-formula.
-        lo_element_3->set_value( value = lv_value ).
-        lo_element_2->append_child( new_child = lo_element_3 ). " formula node
+*        lo_element_3->set_value( value = lv_value ).
+
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+
+*        lo_element_2->append_child( new_child = lo_element_3 ). " formula node
+        lo_ostream->write_string( |</{ lc_xml_node_formula }>| ).
+
+
         IF ls_cellis-formula2 IS NOT INITIAL.
           lv_value = ls_cellis-formula2.
-          lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula
-                                                             parent = lo_document ).
-          lo_element_3->set_value( value = lv_value ).
-          lo_element_2->append_child( new_child = lo_element_3 ). " 2nd formula node
+          lo_ostream->write_string( |<{ lc_xml_node_formula }>| ).
+*          lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula
+*                                                             parent = lo_document ).
+*          lo_element_3->set_value( value = lv_value ).
+          lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+
+*          lo_element_2->append_child( new_child = lo_element_3 ). " 2nd formula node
+          lo_ostream->write_string( |</{ lc_xml_node_formula }>| ).
         ENDIF.
 
       WHEN zcl_excel_style_cond=>c_rule_expression.
@@ -4755,14 +6214,18 @@ METHOD create_xl_sheet.
         READ TABLE me->styles_cond_mapping INTO ls_style_cond_mapping WITH KEY guid = ls_expression-cell_style.
         lv_value = ls_style_cond_mapping-dxf.
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_dxfid }="{ lv_value }">| ).
         " formula node
-        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula
-                                                           parent = lo_document ).
+*        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_formula }>| ).
         lv_value = ls_expression-formula.
-        lo_element_3->set_value( value = lv_value ).
-        lo_element_2->append_child( new_child = lo_element_3 ). " formula node
+*        lo_element_3->set_value( value = lv_value ).
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+*        lo_element_2->append_child( new_child = lo_element_3 ). " formula node
+        lo_ostream->write_string( |</{ lc_xml_node_formula }>| ).
 
 * begin of ins issue #366 - missing conditional rules: top10
       WHEN zcl_excel_style_cond=>c_rule_top10.
@@ -4770,118 +6233,145 @@ METHOD create_xl_sheet.
         READ TABLE me->styles_cond_mapping INTO ls_style_cond_mapping WITH KEY guid = ls_conditional_top10-cell_style.
         lv_value = ls_style_cond_mapping-dxf.
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_dxfid }="{ lv_value }"| ).
         lv_value = ls_conditional_top10-topxx_count.
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = 'rank'
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = 'rank'
+*                                        value = lv_value ).
+        lo_ostream->write_string( | rank="{ lv_value }"| ).
         IF ls_conditional_top10-bottom = 'X'.
-          lo_element_2->set_attribute_ns( name  = 'bottom'
-                                          value = '1' ).
+*          lo_element_2->set_attribute_ns( name  = 'bottom'
+*                                          value = '1' ).
+          lo_ostream->write_string( | bottom="1"| ).
         ENDIF.
         IF ls_conditional_top10-percent = 'X'.
-          lo_element_2->set_attribute_ns( name  = 'percent'
-                                          value ='1' ).
+*          lo_element_2->set_attribute_ns( name  = 'percent'
+*                                          value ='1' ).
+          lo_ostream->write_string( | percent="1"| ).
         ENDIF.
+        lo_ostream->write_string( |>| ).
 
       WHEN zcl_excel_style_cond=>c_rule_above_average.
         ls_conditional_above_avg = lo_style_cond->mode_above_average.
         READ TABLE me->styles_cond_mapping INTO ls_style_cond_mapping WITH KEY guid = ls_conditional_above_avg-cell_style.
         lv_value = ls_style_cond_mapping-dxf.
         CONDENSE lv_value.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_dxfid
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_dxfid }="{ lv_value }"| ).
 
         IF ls_conditional_above_avg-above_average IS INITIAL. " = below average
-          lo_element_2->set_attribute_ns( name  = 'aboveAverage'
-                                          value = '0' ).
+*          lo_element_2->set_attribute_ns( name  = 'aboveAverage'
+*                                          value = '0' ).
+          lo_ostream->write_string( | aboveAverage="0"| ).
         ENDIF.
         IF ls_conditional_above_avg-equal_average = 'X'. " = equal average also
-          lo_element_2->set_attribute_ns( name  = 'equalAverage'
-                                          value = '1' ).
+*          lo_element_2->set_attribute_ns( name  = 'equalAverage'
+*                                          value = '1' ).
+          lo_ostream->write_string( | equalAverage="1"| ).
         ENDIF.
         IF ls_conditional_above_avg-standard_deviation <> 0. " standard deviation instead of value
           lv_value = ls_conditional_above_avg-standard_deviation.
-          lo_element_2->set_attribute_ns( name  = 'stdDev'
-                                          value = lv_value ).
+*          lo_element_2->set_attribute_ns( name  = 'stdDev'
+*                                          value = lv_value ).
+          lo_ostream->write_string( | stdDev="{ lv_value }"| ).
         ENDIF.
+        lo_ostream->write_string( |>| ).
 
 * end of ins issue #366 - missing conditional rules: top10
 
     ENDCASE.
 
-    lo_element->append_child( new_child = lo_element_2 ). " cfRule node
+*    lo_element->append_child( new_child = lo_element_2 ). " cfRule node
 
-    lo_element_root->append_child( new_child = lo_element ). " Conditional formatting node
+    lo_ostream->write_string( |</{ lc_xml_node_cfrule }>| ).
+
+*    lo_element_root->append_child( new_child = lo_element ). " Conditional formatting node
+    lo_ostream->write_string( |</{ lc_xml_node_condformatting }>| ).
   ENDWHILE.
 
   IF io_worksheet->get_data_validations_size( ) GT 0.
     " dataValidations node
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_datavalidations
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_datavalidations
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_datavalidations }>| ).
+
     " Conditional formatting node
     lo_iterator = io_worksheet->get_data_validations_iterator( ).
     WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
       lo_data_validation ?= lo_iterator->if_object_collection_iterator~get_next( ).
       " dataValidation node
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_datavalidation
-                                                         parent = lo_document ).
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_datavalidation
+*                                                         parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_datavalidation }| ).
+
       lv_value = lo_data_validation->type.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_type
-                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_type
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_type }="{ lv_value }"| ).
       IF NOT lo_data_validation->operator IS INITIAL.
         lv_value = lo_data_validation->operator.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_operator
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_operator
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_operator }="{ lv_value }"| ).
       ENDIF.
       IF lo_data_validation->allowblank EQ abap_true.
         lv_value = '1'.
       ELSE.
         lv_value = '0'.
       ENDIF.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_allowblank
-                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_allowblank
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_allowblank }="{ lv_value }"| ).
       IF lo_data_validation->showinputmessage EQ abap_true.
         lv_value = '1'.
       ELSE.
         lv_value = '0'.
       ENDIF.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_showinputmessage
-                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_showinputmessage
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_showinputmessage }="{ lv_value }"| ).
       IF lo_data_validation->showerrormessage EQ abap_true.
         lv_value = '1'.
       ELSE.
         lv_value = '0'.
       ENDIF.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_showerrormessage
-                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_showerrormessage
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_showerrormessage }="{ lv_value }"| ).
       IF lo_data_validation->showdropdown EQ abap_true.
         lv_value = '1'.
       ELSE.
         lv_value = '0'.
       ENDIF.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_showdropdown
-                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_showdropdown
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_showdropdown }="{ lv_value }"| ).
       IF NOT lo_data_validation->errortitle IS INITIAL.
         lv_value = lo_data_validation->errortitle.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_errortitle
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_errortitle
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_errortitle }="{ lv_value }"| ).
       ENDIF.
       IF NOT lo_data_validation->error IS INITIAL.
         lv_value = lo_data_validation->error.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_error
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_error
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_error }="{ lv_value }"| ).
       ENDIF.
       IF NOT lo_data_validation->prompttitle IS INITIAL.
         lv_value = lo_data_validation->prompttitle.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_prompttitle
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_prompttitle
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_prompttitle }="{ lv_value }"| ).
       ENDIF.
       IF NOT lo_data_validation->prompt IS INITIAL.
         lv_value = lo_data_validation->prompt.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_prompt
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_prompt
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_prompt }="{ lv_value }"| ).
       ENDIF.
       lv_cell_row_s = lo_data_validation->cell_row.
       CONDENSE lv_cell_row_s.
@@ -4891,28 +6381,39 @@ METHOD create_xl_sheet.
         CONDENSE lv_cell_row_s.
         CONCATENATE lv_value ':' lo_data_validation->cell_column_to lv_cell_row_s INTO lv_value.
       ENDIF.
-      lo_element_2->set_attribute_ns( name  = lc_xml_attr_sqref
-                                      value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = lc_xml_attr_sqref
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_sqref }="{ lv_value }">| ).
       " formula1 node
-      lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula1
-                                                         parent = lo_document ).
-      lv_value = lo_data_validation->formula1.
-      lo_element_3->set_value( value = lv_value ).
+*      lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula1
+*                                                         parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_formula1 }>| ).
 
-      lo_element_2->append_child( new_child = lo_element_3 ). " formula1 node
+      lv_value = lo_data_validation->formula1.
+*      lo_element_3->set_value( value = lv_value ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+
+      lo_ostream->write_string( |</{ lc_xml_node_formula1 }>| ).
+
+*      lo_element_2->append_child( new_child = lo_element_3 ). " formula1 node
       " formula2 node
       IF NOT lo_data_validation->formula2 IS INITIAL.
-        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula2
-                                                           parent = lo_document ).
+*        lo_element_3 = lo_document->create_simple_element( name   = lc_xml_node_formula2
+*                                                           parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_formula2 }>| ).
         lv_value = lo_data_validation->formula2.
-        lo_element_3->set_value( value = lv_value ).
+*        lo_element_3->set_value( value = lv_value ).
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
 
-        lo_element_2->append_child( new_child = lo_element_3 ). " formula2 node
+        lo_ostream->write_string( |</{ lc_xml_node_formula2 }>| ).
+*        lo_element_2->append_child( new_child = lo_element_3 ). " formula2 node
       ENDIF.
 
-      lo_element->append_child( new_child = lo_element_2 ). " dataValidation node
+      lo_ostream->write_string( |</{ lc_xml_node_datavalidation }>| ).
+*      lo_element->append_child( new_child = lo_element_2 ). " dataValidation node
     ENDWHILE.
-    lo_element_root->append_child( new_child = lo_element ). " dataValidations node
+    lo_ostream->write_string( |</{ lc_xml_node_datavalidations }>| ).
+*    lo_element_root->append_child( new_child = lo_element ). " dataValidations node
   ENDIF.
 
   " Hyperlinks
@@ -4921,24 +6422,30 @@ METHOD create_xl_sheet.
 
   lv_hyperlinks_count = io_worksheet->get_hyperlinks_size( ).
   IF lv_hyperlinks_count > 0.
-    lo_element = lo_document->create_simple_element( name   = 'hyperlinks'
-                                                      parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = 'hyperlinks'
+*                                                      parent = lo_document ).
+    lo_ostream->write_string( |<hyperlinks>| ).
 
     lo_iterator = io_worksheet->get_hyperlinks_iterator( ).
     WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
       lo_link ?= lo_iterator->if_object_collection_iterator~get_next( ).
 
-      lo_element_2 = lo_document->create_simple_element( name   = 'hyperlink'
-                                                    parent = lo_element ).
+*      lo_element_2 = lo_document->create_simple_element( name   = 'hyperlink'
+*                                                    parent = lo_element ).
+
+      lo_ostream->write_string( |<hyperlink| ).
 
       lv_value = lo_link->get_ref( ).
-      lo_element_2->set_attribute_ns( name  = 'ref'
-                                     value = lv_value ).
+*      lo_element_2->set_attribute_ns( name  = 'ref'
+*                                     value = lv_value ).
+
+      lo_ostream->write_string( | ref="{ lv_value }"| ).
 
       IF lo_link->is_internal( ) = abap_true.
         lv_value = lo_link->get_url( ).
-        lo_element_2->set_attribute_ns( name  = 'location'
-                                     value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = 'location'
+*                                     value = lv_value ).
+        lo_ostream->write_string( | location="{ lv_value }"/>| ).
       ELSE.
         ADD 1 TO lv_relation_id.
 
@@ -4946,15 +6453,17 @@ METHOD create_xl_sheet.
         CONDENSE lv_value.
         CONCATENATE 'rId' lv_value INTO lv_value.
 
-        lo_element_2->set_attribute_ns( name  = 'r:id'
-                                      value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = 'r:id'
+*                                      value = lv_value ).
+        lo_ostream->write_string( | r:id="{ lv_value }"/>| ).
 
       ENDIF.
 
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element->append_child( new_child = lo_element_2 ).
     ENDWHILE.
 
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |</hyperlinks>| ).
   ENDIF.
 
 
@@ -4962,238 +6471,288 @@ METHOD create_xl_sheet.
   IF io_worksheet->print_gridlines                  = abap_true OR
      io_worksheet->sheet_setup->vertical_centered   = abap_true OR
      io_worksheet->sheet_setup->horizontal_centered = abap_true.
-    lo_element = lo_document->create_simple_element( name   = 'printOptions'
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = 'printOptions'
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<printOptions| ).
 
     IF io_worksheet->print_gridlines = abap_true.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_gridlines
-                                    value = 'true' ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_gridlines
+*                                    value = 'true' ).
+      lo_ostream->write_string( | { lc_xml_attr_gridlines }="true"| ).
     ENDIF.
 
     IF io_worksheet->sheet_setup->horizontal_centered = abap_true.
-      lo_element->set_attribute_ns( name  = 'horizontalCentered'
-                                    value = 'true' ).
+*      lo_element->set_attribute_ns( name  = 'horizontalCentered'
+*                                    value = 'true' ).
+      lo_ostream->write_string( | horizontalCentered="true"| ).
     ENDIF.
 
     IF io_worksheet->sheet_setup->vertical_centered = abap_true.
-      lo_element->set_attribute_ns( name  = 'verticalCentered'
-                                    value = 'true' ).
+*      lo_element->set_attribute_ns( name  = 'verticalCentered'
+*                                    value = 'true' ).
+      lo_ostream->write_string( | verticalCentered="true"| ).
     ENDIF.
 
-    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |/>| ).
+
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
   " pageMargins node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_pagemargins
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_pagemargins
+*                                                   parent = lo_document ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_pagemargins }| ).
 
   lv_value = io_worksheet->sheet_setup->margin_left.
   CONDENSE lv_value NO-GAPS.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_left
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_left
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_left }="{ lv_value }"| ).
+
   lv_value = io_worksheet->sheet_setup->margin_right.
   CONDENSE lv_value NO-GAPS.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_right
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_right
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_right }="{ lv_value }"| ).
   lv_value = io_worksheet->sheet_setup->margin_top.
   CONDENSE lv_value NO-GAPS.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_top
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_top
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_top }="{ lv_value }"| ).
   lv_value = io_worksheet->sheet_setup->margin_bottom.
   CONDENSE lv_value NO-GAPS.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_bottom
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_bottom
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_bottom }="{ lv_value }"| ).
   lv_value = io_worksheet->sheet_setup->margin_header.
   CONDENSE lv_value NO-GAPS.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_header
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_header
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_header }="{ lv_value }"| ).
   lv_value = io_worksheet->sheet_setup->margin_footer.
   CONDENSE lv_value NO-GAPS.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_footer
-                                value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ). " pageMargins node
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_footer
+*                                value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_footer }="{ lv_value }"/>| ).
+*  lo_element_root->append_child( new_child = lo_element ). " pageMargins node
 
 * pageSetup node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_pagesetup
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_pagesetup
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_pagesetup }| ).
 
   IF io_worksheet->sheet_setup->black_and_white IS NOT INITIAL.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_blackandwhite
-                                  value = `1` ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_blackandwhite
+*                                  value = `1` ).
+    lo_ostream->write_string( | { lc_xml_attr_blackandwhite }="1"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->cell_comments IS NOT INITIAL.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_cellcomments
-                                  value = io_worksheet->sheet_setup->cell_comments ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_cellcomments
+*                                  value = io_worksheet->sheet_setup->cell_comments ).
+    lo_ostream->write_string( | { lc_xml_attr_cellcomments }="{ io_worksheet->sheet_setup->cell_comments }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->copies IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->copies.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_copies
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_copies
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_copies }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->draft IS NOT INITIAL.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_draft
-                                  value = `1` ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_draft
+*                                  value = `1` ).
+    lo_ostream->write_string( | { lc_xml_attr_draft }="1"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->errors IS NOT INITIAL.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_errors
-                                  value = io_worksheet->sheet_setup->errors ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_errors
+*                                  value = io_worksheet->sheet_setup->errors ).
+    lo_ostream->write_string( | { lc_xml_attr_errors }="{ io_worksheet->sheet_setup->errors }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->first_page_number IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->first_page_number.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_firstpagenumber
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_firstpagenumber
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_firstpagenumber }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->fit_to_page IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->fit_to_height.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_fittoheight
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_fittoheight
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_fittoheight }="{ lv_value }"| ).
     lv_value = io_worksheet->sheet_setup->fit_to_width.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_fittowidth
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_fittowidth
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_fittowidth }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->horizontal_dpi IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->horizontal_dpi.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_horizontaldpi
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_horizontaldpi
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_horizontaldpi }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->orientation IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->orientation.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_orientation
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_orientation
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_orientation }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->page_order IS NOT INITIAL.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_pageorder
-                                  value = io_worksheet->sheet_setup->page_order ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_pageorder
+*                                  value = io_worksheet->sheet_setup->page_order ).
+    lo_ostream->write_string( | { lc_xml_attr_pageorder }="{ io_worksheet->sheet_setup->page_order }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->paper_height IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->paper_height.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_paperheight
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_paperheight
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_paperheight }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->paper_size IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->paper_size.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_papersize
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_papersize
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_papersize }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->paper_width IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->paper_width.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_paperwidth
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_paperwidth
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_paperwidth }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->scale IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->scale.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_scale
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_scale
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_scale }="{ lv_value }"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->use_first_page_num IS NOT INITIAL.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_usefirstpagenumber
-                                  value = `1` ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_usefirstpagenumber
+*                                  value = `1` ).
+    lo_ostream->write_string( | { lc_xml_attr_usefirstpagenumber }="1"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->use_printer_defaults IS NOT INITIAL.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_useprinterdefaults
-                                  value = `1` ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_useprinterdefaults
+*                                  value = `1` ).
+    lo_ostream->write_string( | { lc_xml_attr_useprinterdefaults }="1"| ).
   ENDIF.
 
   IF io_worksheet->sheet_setup->vertical_dpi IS NOT INITIAL.
     lv_value = io_worksheet->sheet_setup->vertical_dpi.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_verticaldpi
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_verticaldpi
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_verticaldpi }="{ lv_value }"| ).
   ENDIF.
 
-  lo_element_root->append_child( new_child = lo_element ). " pageSetup node
+  lo_ostream->write_string( |/>| ).
+*  lo_element_root->append_child( new_child = lo_element ). " pageSetup node
 
 * { headerFooter necessary?   >
   IF    io_worksheet->sheet_setup->odd_header IS NOT INITIAL
      OR io_worksheet->sheet_setup->odd_footer IS NOT INITIAL
      OR io_worksheet->sheet_setup->diff_oddeven_headerfooter = abap_true.
 
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_headerfooter
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_headerfooter
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_headerfooter }| ).
 
     " Different header/footer for odd/even pages?
     IF io_worksheet->sheet_setup->diff_oddeven_headerfooter = abap_true.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_differentoddeven
-                                    value = '1' ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_differentoddeven
+*                                    value = '1' ).
+      lo_ostream->write_string( | { lc_xml_attr_differentoddeven }="1"| ).
     ENDIF.
+
+    lo_ostream->write_string( |>| ).
 
     " OddHeader
     CLEAR: lv_value.
     io_worksheet->sheet_setup->get_header_footer_string( IMPORTING ep_odd_header = lv_value ) .
     IF lv_value IS NOT INITIAL.
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_oddheader
-                                                         parent = lo_document ).
-      lo_element_2->set_value( value = lv_value ).
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_oddheader
+*                                                         parent = lo_document ).
+*      lo_element_2->set_value( value = lv_value ).
+*      lo_element->append_child( new_child = lo_element_2 ).
+      lo_ostream->write_string( |<{ lc_xml_node_oddheader }>| ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |</{ lc_xml_node_oddheader }>| ).
     ENDIF.
 
     " OddFooter
     CLEAR: lv_value.
     io_worksheet->sheet_setup->get_header_footer_string( IMPORTING ep_odd_footer = lv_value ) .
     IF lv_value IS NOT INITIAL.
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_oddfooter
-                                                         parent = lo_document ).
-      lo_element_2->set_value( value = lv_value ).
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_oddfooter
+*                                                         parent = lo_document ).
+*      lo_element_2->set_value( value = lv_value ).
+*      lo_element->append_child( new_child = lo_element_2 ).
+      lo_ostream->write_string( |<{ lc_xml_node_oddfooter }>| ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |</{ lc_xml_node_oddfooter }>| ).
     ENDIF.
 
     " evenHeader
     CLEAR: lv_value.
     io_worksheet->sheet_setup->get_header_footer_string( IMPORTING ep_even_header = lv_value ) .
     IF lv_value IS NOT INITIAL.
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_evenheader
-                                                         parent = lo_document ).
-      lo_element_2->set_value( value = lv_value ).
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_evenheader
+*                                                         parent = lo_document ).
+*      lo_element_2->set_value( value = lv_value ).
+*      lo_element->append_child( new_child = lo_element_2 ).
+      lo_ostream->write_string( |<{ lc_xml_node_evenheader }>| ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |</{ lc_xml_node_evenheader }>| ).
     ENDIF.
 
     " evenFooter
     CLEAR: lv_value.
     io_worksheet->sheet_setup->get_header_footer_string( IMPORTING ep_even_footer = lv_value ) .
     IF lv_value IS NOT INITIAL.
-      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_evenfooter
-                                                         parent = lo_document ).
-      lo_element_2->set_value( value = lv_value ).
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_2 = lo_document->create_simple_element( name   = lc_xml_node_evenfooter
+*                                                         parent = lo_document ).
+*      lo_element_2->set_value( value = lv_value ).
+*      lo_element->append_child( new_child = lo_element_2 ).
+      lo_ostream->write_string( |<{ lc_xml_node_evenfooter }>| ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |</{ lc_xml_node_evenfooter }>| ).
     ENDIF.
 
-
-    lo_element_root->append_child( new_child = lo_element ). " headerFooter
+    lo_ostream->write_string( |</{ lc_xml_node_headerfooter }>| ).
+*    lo_element_root->append_child( new_child = lo_element ). " headerFooter
 
   ENDIF.
 
 * issue #377 pagebreaks
   TRY.
-      create_xl_sheet_pagebreaks( io_document  = lo_document
-                                  io_parent    = lo_element_root
-                                  io_worksheet = io_worksheet     )  .
+      create_xl_sheet_pagebreaks( lo_ostream  = lo_ostream
+                                  io_worksheet = io_worksheet ).
     CATCH zcx_excel. " Ignore Hyperlink reading errors - pass everything we were able to identify
   ENDTRY.
 
@@ -5202,16 +6761,18 @@ METHOD create_xl_sheet.
 
   lo_drawings = io_worksheet->get_drawings( ).
   IF lo_drawings->is_empty( ) = abap_false.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_drawing
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_drawing
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_drawing }| ).
     ADD 1 TO lv_relation_id.
 
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute( name = 'r:id'
-                               value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute( name = 'r:id'
+*                               value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | r:id="{ lv_value }"/>| ).
   ENDIF.
 
 * Begin - Add - Issue #180
@@ -5220,16 +6781,18 @@ METHOD create_xl_sheet.
 
   lo_drawing_for_comments = io_worksheet->get_comments( ).
   IF lo_drawing_for_comments->is_empty( ) = abap_false.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_drawing_for_cmt
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_drawing_for_cmt
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_drawing_for_cmt }| ).
     ADD 1 TO lv_relation_id.  " +1 for legacyDrawings
 
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute( name = 'r:id'
-                               value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute( name = 'r:id'
+*                               value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | r:id="{ lv_value }"/>| ).
 
     ADD 1 TO lv_relation_id.  " +1 for comments (not referenced in XL sheet but let's reserve the rId)
   ENDIF.
@@ -5239,15 +6802,18 @@ METHOD create_xl_sheet.
   DATA: lt_drawings TYPE zexcel_t_drawings.
   lt_drawings = io_worksheet->get_header_footer_drawings( ).
   IF lines( lt_drawings ) > 0. "Header or footer image exist
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_drawing_for_hd_ft
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_drawing_for_hd_ft
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_drawing_for_hd_ft }| ).
     ADD 1 TO lv_relation_id.  " +1 for legacyDrawings
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute( name = 'r:id'
-                               value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute( name = 'r:id'
+*                               value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | r:id="{ lv_value }"/>| ).
+
     ADD 1 TO lv_relation_id.  " +1 for comments (not referenced in XL sheet but let's reserve the rId)
   ENDIF.
 *
@@ -5257,12 +6823,16 @@ METHOD create_xl_sheet.
 
   lv_table_count = io_worksheet->get_tables_size( ).
   IF lv_table_count > 0.
-    lo_element = lo_document->create_simple_element( name   = 'tableParts'
-                                                      parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = 'tableParts'
+*                                                      parent = lo_document ).
+
+    lo_ostream->write_string( |<tableParts| ).
     lv_value = lv_table_count.
     CONDENSE lv_value.
-    lo_element->set_attribute_ns( name  = 'count'
-                                   value = lv_value ).
+*    lo_element->set_attribute_ns( name  = 'count'
+*                                   value = lv_value ).
+
+    lo_ostream->write_string( | count="{ lv_value }">| ).
 
     lo_iterator = io_worksheet->get_tables_iterator( ).
     WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
@@ -5272,21 +6842,27 @@ METHOD create_xl_sheet.
       lv_value = lv_relation_id.
       CONDENSE lv_value.
       CONCATENATE 'rId' lv_value INTO lv_value.
-      lo_element_2 = lo_document->create_simple_element( name   = 'tablePart'
-                                                      parent = lo_element ).
-      lo_element_2->set_attribute_ns( name  = 'r:id'
-                                     value = lv_value ).
-      lo_element->append_child( new_child = lo_element_2 ).
+*      lo_element_2 = lo_document->create_simple_element( name   = 'tablePart'
+*                                                      parent = lo_element ).
+*      lo_element_2->set_attribute_ns( name  = 'r:id'
+*                                     value = lv_value ).
+*      lo_element->append_child( new_child = lo_element_2 ).
+      lo_ostream->write_string( |<tablePart| ).
+      lo_ostream->write_string( | r:id="{ lv_value }"/>| ).
 
     ENDWHILE.
 
-    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |</tableParts>| ).
+
+*    lo_element_root->append_child( new_child = lo_element ).
 
   ENDIF.
 
+  lo_ostream->write_string( |</{ lc_xml_node_worksheet }>| ).
+
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
@@ -5312,65 +6888,101 @@ METHOD create_xl_sheet_pagebreaks.
   lt_pagebreaks = lo_pagebreaks->get_all_pagebreaks( ).
   CHECK lt_pagebreaks IS NOT INITIAL.  " No need to proceed if don't have any pagebreaks.
 
-  lo_node_rowbreaks = io_document->create_simple_element( name   = 'rowBreaks'
-                                                          parent = io_document ).
-
-  lo_node_colbreaks = io_document->create_simple_element( name   = 'colBreaks'
-                                                          parent = io_document ).
+*  lo_node_rowbreaks = io_document->create_simple_element( name   = 'rowBreaks'
+*                                                          parent = io_document ).
+  lo_ostream->write_string( |<rowBreaks>| ).
 
 
   LOOP AT lt_pagebreaks ASSIGNING <ls_pagebreak>.
 
-* Count how many rows and columns need to be broken
+* Count how many rows need to be broken
     INSERT <ls_pagebreak>-cell_row    INTO TABLE lt_rows.
-    IF sy-subrc = 0. " New
-      lv_value = <ls_pagebreak>-cell_row.
-      CONDENSE lv_value.
-
-      lo_node_break = io_document->create_simple_element( name   = 'brk'
-                                                          parent = io_document ).
-      lo_node_break->set_attribute( name = 'id'  value = lv_value ).
-      lo_node_break->set_attribute( name = 'man' value = '1' ).      " Manual break
-      lo_node_break->set_attribute( name = 'max' value = '16383' ).  " Max columns
-
-      lo_node_rowbreaks->append_child( new_child = lo_node_break ).
-    ENDIF.
-
-    INSERT <ls_pagebreak>-cell_column INTO TABLE lt_columns.
-    IF sy-subrc = 0. " New
-      lv_value = <ls_pagebreak>-cell_column.
-      CONDENSE lv_value.
-
-      lo_node_break = io_document->create_simple_element( name   = 'brk'
-                                                          parent = io_document ).
-      lo_node_break->set_attribute( name = 'id'  value = lv_value ).
-      lo_node_break->set_attribute( name = 'man' value = '1' ).        " Manual break
-      lo_node_break->set_attribute( name = 'max' value = '1048575' ).  " Max rows
-
-      lo_node_colbreaks->append_child( new_child = lo_node_break ).
-    ENDIF.
-
 
   ENDLOOP.
 
   lv_value = lines( lt_rows ).
   CONDENSE lv_value.
-  lo_node_rowbreaks->set_attribute( name = 'count'             value = lv_value ).
-  lo_node_rowbreaks->set_attribute( name = 'manualBreakCount'  value = lv_value ).
+*  lo_node_rowbreaks->set_attribute( name = 'count'             value = lv_value ).
+*  lo_node_rowbreaks->set_attribute( name = 'manualBreakCount'  value = lv_value ).
+  lo_ostream->write_string( | count="{ lv_value }"| ).
+  lo_ostream->write_string( | manualBreakCount="{ lv_value }"/>| ).
+
+  LOOP AT lt_rows INTO lv_value.
+    lv_value = <ls_pagebreak>-cell_row.
+    CONDENSE lv_value.
+
+*    lo_node_break = io_document->create_simple_element( name   = 'brk'
+*                                                        parent = io_document ).
+*    lo_node_break->set_attribute( name = 'id'  value = lv_value ).
+*    lo_node_break->set_attribute( name = 'man' value = '1' ).      " Manual break
+*    lo_node_break->set_attribute( name = 'max' value = '16383' ).  " Max columns
+*
+*    lo_node_rowbreaks->append_child( new_child = lo_node_break ).
+
+    lo_ostream->write_string( |<brk| ).
+    lo_ostream->write_string( | id="lv_value"| ).
+    lo_ostream->write_string( | man="1"| ).
+    lo_ostream->write_string( | max="16383"/>| ).
+
+  ENDLOOP.
+
+
+  lo_ostream->write_string( |</rowBreaks>| ).
+
+*  lo_node_colbreaks = io_document->create_simple_element( name   = 'colBreaks'
+*                                                          parent = io_document ).
+  lo_ostream->write_string( |<colBreaks>| ).
+
+  LOOP AT lt_pagebreaks ASSIGNING <ls_pagebreak>.
+* Count how many columns need to be broken
+    INSERT <ls_pagebreak>-cell_column INTO TABLE lt_columns.
+  ENDLOOP.
 
   lv_value = lines( lt_rows ).
   CONDENSE lv_value.
-  lo_node_colbreaks->set_attribute( name = 'count'             value = lv_value ).
-  lo_node_colbreaks->set_attribute( name = 'manualBreakCount'  value = lv_value ).
+*  lo_node_colbreaks->set_attribute( name = 'count'             value = lv_value ).
+*  lo_node_colbreaks->set_attribute( name = 'manualBreakCount'  value = lv_value ).
+  lo_ostream->write_string( | count="{ lv_value }"| ).
+  lo_ostream->write_string( | manualBreakCount="{ lv_value }"/>| ).
 
-  io_parent->append_child( new_child = lo_node_rowbreaks ).
-  io_parent->append_child( new_child = lo_node_colbreaks ).
+  LOOP AT lt_columns INTO lv_value.
+    CONDENSE lv_value.
+
+*    lo_node_break = io_document->create_simple_element( name   = 'brk'
+*                                                       parent = io_document ).
+*    lo_node_break->set_attribute( name = 'id'  value = lv_value ).
+*    lo_node_break->set_attribute( name = 'man' value = '1' ).        " Manual break
+*    lo_node_break->set_attribute( name = 'max' value = '1048575' ).  " Max rows
+*
+*    lo_node_colbreaks->append_child( new_child = lo_node_break ).
+    lo_ostream->write_string( |<brk| ).
+    lo_ostream->write_string( | id="lv_value"| ).
+    lo_ostream->write_string( | man="1"| ).
+    lo_ostream->write_string( | max="1048575"/>| ).
+  ENDLOOP.
+
+  lo_ostream->write_string( |</colBreaks>| ).
+
+*  io_parent->append_child( new_child = lo_node_rowbreaks ).
+*  io_parent->append_child( new_child = lo_node_colbreaks ).
 
 ENDMETHOD.
 
 
 METHOD create_xl_sheet_rels.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
 
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
 ** Constant node name
   DATA: lc_xml_node_relationships  TYPE string VALUE 'Relationships',
@@ -5404,14 +7016,18 @@ METHOD create_xl_sheet_rels.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_rels_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_relationships
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_rels_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_relationships }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_rels_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
@@ -5428,19 +7044,27 @@ METHOD create_xl_sheet_rels.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
 
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                     parent = lo_document ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                  value = lc_xml_node_rid_link_tp ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_link_tp ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_link_tp }"| ).
 
     lv_value = lo_link->get_url( ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target_mode
-                                  value = lc_xml_val_external ).
-    lo_element_root->append_child( new_child = lo_element ).
+
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target_mode
+*                                  value = lc_xml_val_external ).
+*    lo_element_root->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_target_mode }="{ lc_xml_val_external }"/>| ).
   ENDWHILE.
 
 * drawing
@@ -5448,26 +7072,34 @@ METHOD create_xl_sheet_rels.
 
   lo_drawings = io_worksheet->get_drawings( ).
   IF lo_drawings->is_empty( ) = abap_false.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+
     ADD 1 TO lv_relation_id.
 
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                  value = lc_xml_node_rid_drawing_tp ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_drawing_tp ).
+
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_drawing_tp }"| ).
 
     lv_index_str = iv_drawing_index.
     CONDENSE lv_index_str NO-GAPS.
     MOVE me->c_xl_drawings TO lv_value.
     REPLACE 'xl' WITH '..' INTO lv_value.
     REPLACE '#' WITH lv_index_str INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                              value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
+
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                              value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
 
 * Begin - Add - Issue #180
@@ -5478,8 +7110,9 @@ METHOD create_xl_sheet_rels.
   lo_comments = io_worksheet->get_comments( ).
   IF lo_comments->is_empty( ) = abap_false.
     " Drawing for comment
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
 
     ADD 1 TO lv_relation_id.
     ADD 1 TO lv_comment_index.
@@ -5487,41 +7120,50 @@ METHOD create_xl_sheet_rels.
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                  value = lc_xml_node_rid_drawing_cmt_tp ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_drawing_cmt_tp ).
+
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_drawing_cmt_tp }"| ).
 
     lv_index_str = iv_comment_index.
     CONDENSE lv_index_str NO-GAPS.
     MOVE me->cl_xl_drawing_for_comments TO lv_value.
     REPLACE 'xl' WITH '..' INTO lv_value.
     REPLACE '#' WITH lv_index_str INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                  value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                  value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
 
     " Comment
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
     ADD 1 TO lv_relation_id.
 
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                  value = lc_xml_node_rid_comment_tp ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_comment_tp ).
+
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_comment_tp }"| ).
 
     lv_index_str = iv_comment_index.
     CONDENSE lv_index_str NO-GAPS.
     MOVE me->c_xl_comments TO lv_value.
     REPLACE 'xl' WITH '..' INTO lv_value.
     REPLACE '#' WITH lv_index_str INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                              value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                              value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
   ENDIF.
 * End   - Add - Issue #180
 
@@ -5532,24 +7174,30 @@ METHOD create_xl_sheet_rels.
   IF lines( lt_drawings ) > 0. "Header or footer image exist
     ADD 1 TO lv_relation_id.
     " Drawing for comment/header/footer
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+
     lv_value = lv_relation_id.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                  value = lc_xml_node_rid_drawing_cmt_tp ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_drawing_cmt_tp ).
+
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_drawing_cmt_tp }"| ).
 
     lv_index_str = lv_comment_index.
     CONDENSE lv_index_str NO-GAPS.
     MOVE me->cl_xl_drawing_for_comments TO lv_value.
     REPLACE 'xl' WITH '..' INTO lv_value.
     REPLACE '#' WITH lv_index_str INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                                  value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                                  value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
   ENDIF.
 *** End Header Footer
 **********************************************************************
@@ -5564,18 +7212,24 @@ METHOD create_xl_sheet_rels.
     CONDENSE lv_value.
     CONCATENATE 'rId' lv_value INTO lv_value.
 
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
-                                                     parent = lo_document ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_id
-                                  value = lv_value ).
-    lo_element->set_attribute_ns( name  = lc_xml_attr_type
-                                  value = lc_xml_node_rid_table_tp ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_relationship
+*                                                     parent = lo_document ).
+
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_id
+*                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_type
+*                                  value = lc_xml_node_rid_table_tp ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_relationship }| ).
+    lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_type }="{ lc_xml_node_rid_table_tp }"| ).
 
     lv_value = lo_table->get_name( ).
     CONCATENATE '../tables/' lv_value '.xml' INTO lv_value.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_target
-                              value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_target
+*                              value = lv_value ).
+*    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( | { lc_xml_attr_target }="{ lv_value }"/>| ).
   ENDWHILE.
 
 *  IF io_worksheet->get_print_settings( )->is_empty( ) = abap_false.
@@ -5602,9 +7256,11 @@ METHOD create_xl_sheet_rels.
 *    lo_element_root->append_child( new_child = lo_element ).
 *  ENDIF.
 
+lo_ostream->write_string( |</{ lc_xml_node_relationships }>| ).
+
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
@@ -5671,8 +7327,9 @@ METHOD create_xl_sheet_sheet_data.
 
 
   " sheetData node
-  rv_ixml_sheet_data_root = io_document->create_simple_element( name   = lc_xml_node_sheetdata
-                                                                parent = io_document ).
+*  rv_ixml_sheet_data_root = io_document->create_simple_element( name   = lc_xml_node_sheetdata
+*                                                                parent = io_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_sheetdata }>| ).
 
   " Get column count
   col_count      = io_worksheet->get_highest_column( ).
@@ -5796,31 +7453,53 @@ METHOD create_xl_sheet_sheet_data.
           " Row visibility of previos row.
           IF lo_row->get_visible( io_worksheet ) = abap_false OR
              l_autofilter_hidden = abap_true.
-            lo_element_2->set_attribute_ns( name  = 'hidden' value = 'true' ).
+*            lo_element_2->set_attribute_ns( name  = 'hidden' value = 'true' ).
           ENDIF.
 *          lv_xstring_partial = render_ixml_element_no_header( lo_element_2 ).
 *          CONCATENATE lv_xstring lv_xstring_partial
 *              INTO lv_xstring IN BYTE MODE.
-          rv_ixml_sheet_data_root->append_child( new_child = lo_element_2 ). " row node
+*          rv_ixml_sheet_data_root->append_child( new_child = lo_element_2 ). " row node
+          lo_ostream->write_string( |</{ lc_xml_node_row }>| ).
         ENDIF.
         " Add new row
-        lo_element_2 = io_document->create_simple_element( name   = lc_xml_node_row
-                                                           parent = io_document ).
+*        lo_element_2 = io_document->create_simple_element( name   = lc_xml_node_row
+*                                                           parent = io_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_row }| ).
         " r
         lv_value = <ls_sheet_content>-cell_row.
         SHIFT lv_value RIGHT DELETING TRAILING space.
         SHIFT lv_value LEFT DELETING LEADING space.
 
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_r
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_r
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_r }="{ lv_value }"| ).
         " Spans
         lv_value = col_count.
         CONCATENATE '1:' lv_value INTO lv_value.
         SHIFT lv_value RIGHT DELETING TRAILING space.
         SHIFT lv_value LEFT DELETING LEADING space.
-        lo_element_2->set_attribute_ns( name  = lc_xml_attr_spans
-                                        value = lv_value ).
+*        lo_element_2->set_attribute_ns( name  = lc_xml_attr_spans
+*                                        value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_spans }="{ lv_value }"| ).
+
+
+*        IF <ls_sheet_content>-cell_row - 1 > 0.
+*          DATA: lo_row_prev TYPE REF TO zcl_excel_row.
+*          lo_row_prev = io_worksheet->get_row( <ls_sheet_content>-cell_row - 1 ).
+*          " Row visibility of previos row.
+*          IF lo_row->get_visible( io_worksheet ) = abap_false OR
+*             l_autofilter_hidden = abap_true.
+**            lo_element_2->set_attribute_ns( name  = 'hidden' value = 'true' ).
+*            lo_ostream->write_string( | hidden="true"| ).
+*          ENDIF.
+*        ENDIF.
+
         lo_row = io_worksheet->get_row( <ls_sheet_content>-cell_row ).
+        IF lo_row->get_visible( io_worksheet ) = abap_false OR
+             l_autofilter_hidden = abap_true.
+*            lo_element_2->set_attribute_ns( name  = 'hidden' value = 'true' ).
+            lo_ostream->write_string( | hidden="true"| ).
+        ENDIF.
         " Do we need the row dimension attributes?
         IF lo_row->get_row_height( )   >= 0 OR
            lo_row->get_collapsed( io_worksheet )     = abap_true OR
@@ -5829,26 +7508,32 @@ METHOD create_xl_sheet_sheet_data.
            l_autofilter_hidden = abap_true.
           " Row dimensions
           IF lo_row->get_row_height( ) >= 0.
-            lo_element_2->set_attribute_ns( name  = 'customHeight' value = '1' ).
+*            lo_element_2->set_attribute_ns( name  = 'customHeight' value = '1' ).
+            lo_ostream->write_string( | customHeight="1"| ).
             lv_value = lo_row->get_row_height( ).
-            lo_element_2->set_attribute_ns( name  = 'ht' value = lv_value ).
+*            lo_element_2->set_attribute_ns( name  = 'ht' value = lv_value ).
+            lo_ostream->write_string( | ht="{ lv_value }"| ).
           ENDIF.
           " Collapsed
           IF lo_row->get_collapsed( io_worksheet ) = abap_true.
-            lo_element_2->set_attribute_ns( name  = 'collapsed' value = 'true' ).
+*            lo_element_2->set_attribute_ns( name  = 'collapsed' value = 'true' ).
+            lo_ostream->write_string( | collapsed="true"| ).
           ENDIF.
           " Outline level
           IF lo_row->get_outline_level( io_worksheet ) > 0.
             lv_value = lo_row->get_outline_level( io_worksheet ).
             SHIFT lv_value RIGHT DELETING TRAILING space.
             SHIFT lv_value LEFT DELETING LEADING space.
-            lo_element_2->set_attribute_ns( name  = 'outlineLevel' value = lv_value ).
+*            lo_element_2->set_attribute_ns( name  = 'outlineLevel' value = lv_value ).
+            lo_ostream->write_string( | outlineLevel="{ lv_value }"| ).
           ENDIF.
           " Style
           IF lo_row->get_xf_index( ) <> 0.
             lv_value = lo_row->get_xf_index( ).
-            lo_element_2->set_attribute_ns( name  = 's' value = lv_value ).
-            lo_element_2->set_attribute_ns( name  = 'customFormat'  value = '1' ).
+*            lo_element_2->set_attribute_ns( name  = 's' value = lv_value ).
+            lo_ostream->write_string( | s="{ lv_value }"| ).
+*            lo_element_2->set_attribute_ns( name  = 'customFormat'  value = '1' ).
+            lo_ostream->write_string( | customFormat="1"| ).
           ENDIF.
         ENDIF.
         IF lt_values IS INITIAL. " no values attached to autofilter  " issue #368 autofilter filtering too much
@@ -5856,16 +7541,21 @@ METHOD create_xl_sheet_sheet_data.
         ELSE.
           l_autofilter_hidden = abap_true. " First default is not showing
         ENDIF.
+        lo_ostream->write_string( |>| ).
       ELSE.
 
       ENDIF.
     ENDWHILE.
 
-    lo_element_3 = io_document->create_simple_element( name   = lc_xml_node_c
-                                                       parent = io_document ).
+*    lo_element_3 = io_document->create_simple_element( name   = lc_xml_node_c
+*                                                       parent = io_document ).
 
-    lo_element_3->set_attribute_ns( name  = lc_xml_attr_r
-                                    value = <ls_sheet_content>-cell_coords ).
+    lo_ostream->write_string( |<{ lc_xml_node_c }| ).
+
+
+*    lo_element_3->set_attribute_ns( name  = lc_xml_attr_r
+*                                    value = <ls_sheet_content>-cell_coords ).
+    lo_ostream->write_string( | { lc_xml_attr_r }="{ <ls_sheet_content>-cell_coords }"| ).
 
 *begin of change issue #157 - allow column cellstyle
 *if no cellstyle is set, look into column, then into sheet
@@ -5913,80 +7603,120 @@ METHOD create_xl_sheet_sheet_data.
       lv_value = ls_style_mapping-style.
       SHIFT lv_value RIGHT DELETING TRAILING space.
       SHIFT lv_value LEFT DELETING LEADING space.
-      lo_element_3->set_attribute_ns( name  = lc_xml_attr_s
-                                      value = lv_value ).
+*      lo_element_3->set_attribute_ns( name  = lc_xml_attr_s
+*                                      value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_s }="{ lv_value }"| ).
     ENDIF.
 
     " For cells with formula ignore the value - Excel will calculate it
     IF <ls_sheet_content>-cell_formula IS NOT INITIAL.
       " fomula node
-      lo_element_4 = io_document->create_simple_element( name   = lc_xml_node_f
-                                                         parent = io_document ).
+*      lo_element_4 = io_document->create_simple_element( name   = lc_xml_node_f
+*                                                         parent = io_document ).
+      lo_ostream->write_string( |>| ).
+      lo_ostream->write_string( |<{ lc_xml_node_f }>| ).
+
       lv_value = <ls_sheet_content>-cell_formula.
       CONDENSE lv_value.
-      lo_element_4->set_value( value = lv_value ).
-      lo_element_3->append_child( new_child = lo_element_4 ). " fomula node
+*      lo_element_4->set_value( value = lv_value ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |</{ lc_xml_node_f }>| ).
+*      lo_element_3->append_child( new_child = lo_element_4 ). " fomula node
     ELSEIF <ls_sheet_content>-cell_value IS NOT INITIAL           "cell can have just style or formula
        AND <ls_sheet_content>-cell_value <> lc_dummy_cell_content.
       IF <ls_sheet_content>-data_type IS NOT INITIAL.
         IF <ls_sheet_content>-data_type EQ 's_leading_blanks'.
-          lo_element_3->set_attribute_ns( name  = lc_xml_attr_t
-                                          value = 's' ).
+*          lo_element_3->set_attribute_ns( name  = lc_xml_attr_t
+*                                          value = 's' ).
+          lo_ostream->write_string( | { lc_xml_attr_t }="s"| ).
         ELSE.
-          lo_element_3->set_attribute_ns( name  = lc_xml_attr_t
-                                          value = <ls_sheet_content>-data_type ).
+*          lo_element_3->set_attribute_ns( name  = lc_xml_attr_t
+*                                          value = <ls_sheet_content>-data_type ).
+          lo_ostream->write_string( | { lc_xml_attr_t }="{ <ls_sheet_content>-data_type }"| ).
         ENDIF.
       ENDIF.
 
+      lo_ostream->write_string( |>| ).
+
       " value node
-      lo_element_4 = io_document->create_simple_element( name   = lc_xml_node_v
-                                                         parent = io_document ).
+*      lo_element_4 = io_document->create_simple_element( name   = lc_xml_node_v
+*                                                         parent = io_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_v }>| ).
 
       IF <ls_sheet_content>-data_type EQ 's' OR <ls_sheet_content>-data_type EQ 's_leading_blanks'.
         lv_value = me->get_shared_string_index( <ls_sheet_content>-cell_value ).
         CONDENSE lv_value.
-        lo_element_4->set_value( value = lv_value ).
+*        lo_element_4->set_value( value = lv_value ).
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
       ELSE.
         lv_value = <ls_sheet_content>-cell_value.
         CONDENSE lv_value.
-        lo_element_4->set_value( value = lv_value ).
+*        lo_element_4->set_value( value = lv_value ).
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
       ENDIF.
+      lo_ostream->write_string( |</{ lc_xml_node_v }>| ).
 
-      lo_element_3->append_child( new_child = lo_element_4 ). " value node
-    ENDIF.
-
-    lo_element_2->append_child( new_child = lo_element_3 ). " column node
-    ls_last_row = <ls_sheet_content>.
-  ENDLOOP.
-  IF sy-subrc = 0.
-    READ TABLE lt_values INTO ls_values WITH KEY column = ls_last_row-cell_column.
-    IF sy-subrc = 0 AND ls_values-value = ls_last_row-cell_value.
-      CLEAR l_autofilter_hidden.
-    ENDIF.
-    IF lo_autofilter IS BOUND.
-      IF ls_area-row_start >=  ls_last_row-cell_row OR " One less for header
-        ls_area-row_end   < ls_last_row-cell_row .
-        CLEAR l_autofilter_hidden.
-      ENDIF.
+*      lo_element_3->append_child( new_child = lo_element_4 ). " value node
     ELSE.
-      CLEAR l_autofilter_hidden.
+      lo_ostream->write_string( |>| ).
     ENDIF.
-    " Row visibility of previos row.
-    IF lo_row->get_visible( ) = abap_false OR
-       l_autofilter_hidden = abap_true.
-      lo_element_2->set_attribute_ns( name  = 'hidden' value = 'true' ).
-    ENDIF.
+
+    lo_ostream->write_string( |</{ lc_xml_node_c }>| ).
+
+*    lo_element_2->append_child( new_child = lo_element_3 ). " column node
+
+    ls_last_row = <ls_sheet_content>.
+
+  ENDLOOP.
+
+  lo_ostream->write_string( |</{ lc_xml_node_row }>| ).
+
+*  IF sy-subrc = 0.
+*    READ TABLE lt_values INTO ls_values WITH KEY column = ls_last_row-cell_column.
+*    IF sy-subrc = 0 AND ls_values-value = ls_last_row-cell_value.
+*      CLEAR l_autofilter_hidden.
+*    ENDIF.
+*    IF lo_autofilter IS BOUND.
+*      IF ls_area-row_start >=  ls_last_row-cell_row OR " One less for header
+*        ls_area-row_end   < ls_last_row-cell_row .
+*        CLEAR l_autofilter_hidden.
+*      ENDIF.
+*    ELSE.
+*      CLEAR l_autofilter_hidden.
+*    ENDIF.
+*    " Row visibility of previos row.
+*    IF lo_row->get_visible( ) = abap_false OR
+*       l_autofilter_hidden = abap_true.
+**      lo_element_2->set_attribute_ns( name  = 'hidden' value = 'true' ).
+**      lo_ostream->write_string( | hidden="true"| ).
+*    ENDIF.
 *    lv_xstring_partial = render_ixml_element_no_header( lo_element_2 ).
 *    CONCATENATE lv_xstring lv_xstring_partial
 *        INTO lv_xstring IN BYTE MODE.
-    rv_ixml_sheet_data_root->append_child( new_child = lo_element_2 ). " row node
-  ENDIF.
+**    rv_ixml_sheet_data_root->append_child( new_child = lo_element_2 ). " row node
+*  ENDIF.
   DELETE io_worksheet->sheet_content WHERE cell_value = lc_dummy_cell_content.  " Get rid of dummyentries
+
+  lo_ostream->write_string( |</{ lc_xml_node_sheetdata }>| ).
 
 ENDMETHOD.
 
 
 METHOD create_xl_styles.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
 *--------------------------------------------------------------------*
 * ToDos:
 *        2do§1   dxfs-cellstyles are used in conditional formats:
@@ -6148,32 +7878,35 @@ METHOD create_xl_styles.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 ***********************************************************************
 * STEP 3: Create main node relationships
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_stylesheet
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_stylesheet
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_ns ).
+  lo_ostream->write_string( |<{ lc_xml_node_stylesheet }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
 
-  lo_element_fonts = lo_document->create_simple_element( name   = lc_xml_node_fonts
-                                                         parent = lo_document ).
-
-  lo_element_fills = lo_document->create_simple_element( name   = lc_xml_node_fills
-                                                         parent = lo_document ).
-
-  lo_element_borders = lo_document->create_simple_element( name   = lc_xml_node_borders
-                                                           parent = lo_document ).
-
-  lo_element_cellxfs = lo_document->create_simple_element( name   = lc_xml_node_cellxfs
-                                                           parent = lo_document ).
-
-  lo_element_numfmts = lo_document->create_simple_element( name   = lc_xml_node_numfmts
-                                                           parent = lo_document ).
+*  lo_element_fonts = lo_document->create_simple_element( name   = lc_xml_node_fonts
+*                                                         parent = lo_document ).
+*
+*  lo_element_fills = lo_document->create_simple_element( name   = lc_xml_node_fills
+*                                                         parent = lo_document ).
+*
+*  lo_element_borders = lo_document->create_simple_element( name   = lc_xml_node_borders
+*                                                           parent = lo_document ).
+*
+*  lo_element_cellxfs = lo_document->create_simple_element( name   = lc_xml_node_cellxfs
+*                                                           parent = lo_document ).
+*
+*  lo_element_numfmts = lo_document->create_simple_element( name   = lc_xml_node_numfmts
+*                                                           parent = lo_document ).
 
 * Prepare built-in number formats.
   LOOP AT zcl_excel_style_number_format=>mt_built_in_num_formats ASSIGNING <ls_reader_built_in>.
@@ -6322,208 +8055,284 @@ METHOD create_xl_styles.
   ENDWHILE.
 
   " create numfmt elements
+  lo_ostream->write_string( |<{ lc_xml_node_numfmts }>| ).
   LOOP AT lt_numfmts INTO ls_numfmt.
-    lo_element_numfmt = lo_document->create_simple_element( name   = lc_xml_node_numfmt
-                                                            parent = lo_document ).
+*    lo_element_numfmt = lo_document->create_simple_element( name   = lc_xml_node_numfmt
+*                                                            parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_numfmt }| ).
     lv_value = sy-tabix + zcl_excel_common=>c_excel_numfmt_offset.
     CONDENSE lv_value.
-    lo_element_numfmt->set_attribute_ns( name  = lc_xml_attr_numfmtid
-                                      value = lv_value ).
+*    lo_element_numfmt->set_attribute_ns( name  = lc_xml_attr_numfmtid
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_numfmtid }="{ lv_value }"| ).
     lv_value = ls_numfmt-numfmt.
 *    REPLACE ALL OCCURRENCES OF '.' IN lv_value WITH '\.'.
-    lo_element_numfmt->set_attribute_ns( name  = lc_xml_attr_formatcode
-                                         value = lv_value ).
-    lo_element_numfmts->append_child( new_child = lo_element_numfmt ).
+*    lo_element_numfmt->set_attribute_ns( name  = lc_xml_attr_formatcode
+*                                         value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_formatcode }="{ zcl_excel_common=>escape_xml( lv_value ) }"/>| ).
+*    lo_element_numfmts->append_child( new_child = lo_element_numfmt ).
   ENDLOOP.
+  lo_ostream->write_string( |</{ lc_xml_node_numfmts }>| ).
 
   " create font elements
+  lo_ostream->write_string( |<{ lc_xml_node_fonts }| ).
+  " attribute "count"
+  DESCRIBE TABLE lt_fonts LINES lv_fonts_count.
+  MOVE lv_fonts_count TO lv_value.
+  SHIFT lv_value RIGHT DELETING TRAILING space.
+  SHIFT lv_value LEFT DELETING LEADING space.
+*  lo_element_fonts->set_attribute_ns( name  = lc_xml_attr_count
+*                                      value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_value }">| ).
+
   LOOP AT lt_fonts INTO ls_font.
-    lo_element_font = lo_document->create_simple_element( name   = lc_xml_node_font
-                                                          parent = lo_document ).
+*    lo_element_font = lo_document->create_simple_element( name   = lc_xml_node_font
+*                                                          parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_font }>| ).
     IF ls_font-bold EQ abap_true.
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_b
-                                                           parent = lo_document ).
-      lo_element_font->append_child( new_child = lo_sub_element ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_b
+*                                                           parent = lo_document ).
+*      lo_element_font->append_child( new_child = lo_sub_element ).
+      lo_ostream->write_string( |<{ lc_xml_node_b }/>| ).
     ENDIF.
     IF ls_font-italic EQ abap_true.
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_i
-                                                           parent = lo_document ).
-      lo_element_font->append_child( new_child = lo_sub_element ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_i
+*                                                           parent = lo_document ).
+*      lo_element_font->append_child( new_child = lo_sub_element ).
+      lo_ostream->write_string( |<{ lc_xml_node_i }/>| ).
     ENDIF.
     IF ls_font-underline EQ abap_true.
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_u
-                                                           parent = lo_document ).
-      lv_value = ls_font-underline_mode.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
-                                        value = lv_value ).
-      lo_element_font->append_child( new_child = lo_sub_element ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_u
+*                                                           parent = lo_document ).
+*      lv_value = ls_font-underline_mode.
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
+*                                        value = lv_value ).
+*      lo_element_font->append_child( new_child = lo_sub_element ).
+      lo_ostream->write_string( |<{ lc_xml_node_u }| ).
+      lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
+
     ENDIF.
     IF ls_font-strikethrough EQ abap_true.
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_strike
-                                                           parent = lo_document ).
-      lo_element_font->append_child( new_child = lo_sub_element ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_strike
+*                                                           parent = lo_document ).
+*      lo_element_font->append_child( new_child = lo_sub_element ).
+      lo_ostream->write_string( |<{ lc_xml_node_strike }/>| ).
     ENDIF.
     "size
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_sz
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_sz
+*                                                         parent = lo_document ).
     lv_value = ls_font-size.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
-                                      value = lv_value ).
-    lo_element_font->append_child( new_child = lo_sub_element ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
+*                                      value = lv_value ).
+*    lo_element_font->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |<{ lc_xml_node_sz }| ).
+    lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
     "color
     create_xl_styles_color_node(
-        io_document        = lo_document
-        io_parent          = lo_element_font
-        is_color           = ls_font-color ).
+        lo_ostream        = lo_ostream
+        is_color          = ls_font-color ).
 
     "name
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_name
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_name
+*                                                         parent = lo_document ).
     lv_value = ls_font-name.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
-                                      value = lv_value ).
-    lo_element_font->append_child( new_child = lo_sub_element ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
+*                                      value = lv_value ).
+*    lo_element_font->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |<{ lc_xml_node_name }| ).
+    lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
     "family
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_family
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_family
+*                                                         parent = lo_document ).
     lv_value = ls_font-family.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
-                                      value = lv_value ).
-    lo_element_font->append_child( new_child = lo_sub_element ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
+*                                      value = lv_value ).
+*    lo_element_font->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |<{ lc_xml_node_family }| ).
+    lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
+
     "scheme
     IF ls_font-scheme IS NOT INITIAL.
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_scheme
-                                                           parent = lo_document ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_scheme
+*                                                           parent = lo_document ).
       lv_value = ls_font-scheme.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
-                                        value = lv_value ).
-      lo_element_font->append_child( new_child = lo_sub_element ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_val
+*                                        value = lv_value ).
+*      lo_element_font->append_child( new_child = lo_sub_element ).
+      lo_ostream->write_string( |<{ lc_xml_node_scheme }| ).
+      lo_ostream->write_string( | { lc_xml_attr_val }="{ lv_value }"/>| ).
     ENDIF.
-    lo_element_fonts->append_child( new_child = lo_element_font ).
+*    lo_element_fonts->append_child( new_child = lo_element_font ).
+    lo_ostream->write_string( |</{ lc_xml_node_font }>| ).
   ENDLOOP.
 
-  " create fill elements
-  LOOP AT lt_fills INTO ls_fill.
-    lo_element_fill = lo_document->create_simple_element( name   = lc_xml_node_fill
-                                                          parent = lo_document ).
+  lo_ostream->write_string( |</{ lc_xml_node_fonts }>| ).
 
+  " create fill elements
+  lo_ostream->write_string( |<{ lc_xml_node_fills }| ).
+  " attribute "count"
+  DESCRIBE TABLE lt_fills LINES lv_fills_count.
+  MOVE lv_fills_count TO lv_value.
+  SHIFT lv_value RIGHT DELETING TRAILING space.
+  SHIFT lv_value LEFT DELETING LEADING space.
+*  lo_element_fills->set_attribute_ns( name  = lc_xml_attr_count
+*                                      value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_value }">| ).
+  LOOP AT lt_fills INTO ls_fill.
+*    lo_element_fill = lo_document->create_simple_element( name   = lc_xml_node_fill
+*                                                          parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_fill }>| ).
     IF ls_fill-gradtype IS NOT INITIAL.
       "gradient
 
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_gradientfill
-                                                          parent = lo_document ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_gradientfill
+*                                                          parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_gradientfill }| ).
       IF ls_fill-gradtype-degree IS NOT INITIAL.
         lv_value = ls_fill-gradtype-degree.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_degree  value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_degree  value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_degree }="{ lv_value }"| ).
       ENDIF.
       IF ls_fill-gradtype-type IS NOT INITIAL.
         lv_value = ls_fill-gradtype-type.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_type  value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_type  value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_type }="{ lv_value }"| ).
       ENDIF.
       IF ls_fill-gradtype-bottom IS NOT INITIAL.
         lv_value = ls_fill-gradtype-bottom.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_bottom  value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_bottom  value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_bottom }="{ lv_value }"| ).
       ENDIF.
       IF ls_fill-gradtype-top IS NOT INITIAL.
         lv_value = ls_fill-gradtype-top.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_top  value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_top  value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_top }="{ lv_value }"| ).
       ENDIF.
       IF ls_fill-gradtype-right IS NOT INITIAL.
         lv_value = ls_fill-gradtype-right.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_right  value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_right  value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_right }="{ lv_value }"| ).
       ENDIF.
       IF ls_fill-gradtype-left IS NOT INITIAL.
         lv_value = ls_fill-gradtype-left.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_left  value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_left  value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_left }="{ lv_value }"| ).
       ENDIF.
+
+      lo_ostream->write_string( |>| ).
 
       IF ls_fill-gradtype-position3 IS NOT INITIAL.
         "create <stop> elements for gradients, we can have 2 or 3 stops in each gradient
-        lo_sub_element_2 =  lo_document->create_simple_element( name   = lc_xml_node_stop
-                                                                parent = lo_sub_element ).
+*        lo_sub_element_2 =  lo_document->create_simple_element( name   = lc_xml_node_stop
+*                                                                parent = lo_sub_element ).
         lv_value = ls_fill-gradtype-position1.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position value = lv_value ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_stop }| ).
+        lo_ostream->write_string( | { lc_xml_attr_position }="{ lv_value }">| ).
 
         create_xl_styles_color_node(
-            io_document        = lo_document
-            io_parent          = lo_sub_element_2
+            lo_ostream        = lo_ostream
+*            io_parent          = lo_sub_element_2
             is_color           = ls_fill-bgcolor
             iv_color_elem_name = lc_xml_node_color ).
-        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |</{ lc_xml_node_stop }>| ).
 
-        lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_stop
-                                                               parent = lo_sub_element ).
+*        lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_stop
+*                                                               parent = lo_sub_element ).
 
         lv_value = ls_fill-gradtype-position2.
 
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position
+*                                            value = lv_value ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_stop }| ).
+        lo_ostream->write_string( | { lc_xml_attr_position }="{ lv_value }">| ).
 
         create_xl_styles_color_node(
-            io_document        = lo_document
-            io_parent          = lo_sub_element_2
+            lo_ostream        = lo_ostream
+*            io_parent         = lo_sub_element_2
             is_color           = ls_fill-fgcolor
             iv_color_elem_name = lc_xml_node_color ).
-        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |</{ lc_xml_node_stop }>| ).
 
-        lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_stop
-                                                               parent = lo_sub_element ).
+*        lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_stop
+*                                                               parent = lo_sub_element ).
 
         lv_value = ls_fill-gradtype-position3.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position
+*                                            value = lv_value ).
+        lo_ostream->write_string( |<{ lc_xml_node_stop }| ).
+        lo_ostream->write_string( | { lc_xml_attr_position }="{ lv_value }">| ).
 
         create_xl_styles_color_node(
-            io_document        = lo_document
-            io_parent          = lo_sub_element_2
+            lo_ostream        = lo_ostream
+*            io_parent          = lo_sub_element_2
             is_color           = ls_fill-bgcolor
             iv_color_elem_name = lc_xml_node_color ).
-        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |</{ lc_xml_node_stop }>| ).
 
       ELSE.
         "create <stop> elements for gradients, we can have 2 or 3 stops in each gradient
-        lo_sub_element_2 =  lo_document->create_simple_element( name   = lc_xml_node_stop
-                                                                parent = lo_sub_element ).
+*        lo_sub_element_2 =  lo_document->create_simple_element( name   = lc_xml_node_stop
+*                                                                parent = lo_sub_element ).
         lv_value = ls_fill-gradtype-position1.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position value = lv_value ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_stop }| ).
+        lo_ostream->write_string( | { lc_xml_attr_position }="{ lv_value }">| ).
 
         create_xl_styles_color_node(
-            io_document        = lo_document
-            io_parent          = lo_sub_element_2
+            lo_ostream        = lo_ostream
+*            io_parent          = lo_sub_element_2
             is_color           = ls_fill-bgcolor
             iv_color_elem_name = lc_xml_node_color ).
-        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+*        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |</{ lc_xml_node_stop }>| ).
 
-        lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_stop
-                                                               parent = lo_sub_element ).
+*        lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_stop
+*                                                               parent = lo_sub_element ).
 
         lv_value = ls_fill-gradtype-position2.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_position
+*                                            value = lv_value ).
+
+        lo_ostream->write_string( |<{ lc_xml_node_stop }| ).
+        lo_ostream->write_string( | { lc_xml_attr_position }="{ lv_value }">| ).
 
         create_xl_styles_color_node(
-            io_document        = lo_document
-            io_parent          = lo_sub_element_2
+            lo_ostream        = lo_ostream
+*            io_parent          = lo_sub_element_2
             is_color           = ls_fill-fgcolor
             iv_color_elem_name = lc_xml_node_color ).
-        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+        lo_ostream->write_string( |</{ lc_xml_node_stop }>| ).
+*        lo_sub_element->append_child( new_child = lo_sub_element_2 ).
       ENDIF.
+
+      lo_ostream->write_string( |</{ lc_xml_node_gradientfill }>| ).
 
     ELSE.
       "pattern
-      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_patternfill
-                                                           parent = lo_document ).
+*      lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_patternfill
+*                                                           parent = lo_document ).
       lv_value = ls_fill-filltype.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_patterntype
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_patterntype
+*                                        value = lv_value ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_patternfill }| ).
+      lo_ostream->write_string( | { lc_xml_attr_patterntype }="{ lv_value }">| ).
+
       " fgcolor
       create_xl_styles_color_node(
-          io_document        = lo_document
-          io_parent          = lo_sub_element
+          lo_ostream        = lo_ostream
+*          io_parent          = lo_sub_element
           is_color           = ls_fill-fgcolor
           iv_color_elem_name = lc_xml_node_fgcolor ).
 
@@ -6534,326 +8343,442 @@ METHOD create_xl_styles.
 
         " bgcolor
         create_xl_styles_color_node(
-            io_document        = lo_document
-            io_parent          = lo_sub_element
+            lo_ostream        = lo_ostream
+*            io_parent          = lo_sub_element
             is_color           = ls_fill-bgcolor
             iv_color_elem_name = lc_xml_node_bgcolor ).
 
       ENDIF.
+
+      lo_ostream->write_string( |</{ lc_xml_node_patternfill }>| ).
+
     ENDIF.
 
-    lo_element_fill->append_child( new_child = lo_sub_element )."pattern
-    lo_element_fills->append_child( new_child = lo_element_fill ).
+*    lo_element_fill->append_child( new_child = lo_sub_element )."pattern
+*    lo_element_fills->append_child( new_child = lo_element_fill ).
+
+     lo_ostream->write_string( |</{ lc_xml_node_fill }>| ).
   ENDLOOP.
+  lo_ostream->write_string( |</{ lc_xml_node_fills }>| ).
 
   " create border elements
+  lo_ostream->write_string( |<{ lc_xml_node_borders }| ).
+  " attribute "count"
+  DESCRIBE TABLE lt_borders LINES lv_borders_count.
+  MOVE lv_borders_count TO lv_value.
+  SHIFT lv_value RIGHT DELETING TRAILING space.
+  SHIFT lv_value LEFT DELETING LEADING space.
+*  lo_element_borders->set_attribute_ns( name  = lc_xml_attr_count
+*                                        value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_value }">| ).
   LOOP AT lt_borders INTO ls_border.
-    lo_element_border = lo_document->create_simple_element( name   = lc_xml_node_border
-                                                            parent = lo_document ).
+*    lo_element_border = lo_document->create_simple_element( name   = lc_xml_node_border
+*                                                            parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_border }| ).
 
     IF ls_border-diagonalup IS NOT INITIAL.
       lv_value = ls_border-diagonalup.
       CONDENSE lv_value.
-      lo_element_border->set_attribute_ns( name  = lc_xml_attr_diagonalup
-                                        value = lv_value ).
+*      lo_element_border->set_attribute_ns( name  = lc_xml_attr_diagonalup
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_diagonalup }="{ lv_value }"| ).
     ENDIF.
 
     IF ls_border-diagonaldown IS NOT INITIAL.
       lv_value = ls_border-diagonaldown.
       CONDENSE lv_value.
-      lo_element_border->set_attribute_ns( name  = lc_xml_attr_diagonaldown
-                                        value = lv_value ).
+*      lo_element_border->set_attribute_ns( name  = lc_xml_attr_diagonaldown
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_diagonaldown }="{ lv_value }"| ).
     ENDIF.
+    lo_ostream->write_string( |>| ).
 
     "left
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_left
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_left
+*                                                         parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_left }| ).
     IF ls_border-left_style IS NOT INITIAL.
       lv_value = ls_border-left_style.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"| ).
     ENDIF.
+    lo_ostream->write_string( |>| ).
 
     create_xl_styles_color_node(
-        io_document        = lo_document
-        io_parent          = lo_sub_element
+        lo_ostream        = lo_ostream
+*        io_parent          = lo_sub_element
         is_color           = ls_border-left_color ).
 
-    lo_element_border->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_left }>| ).
+
+*    lo_element_border->append_child( new_child = lo_sub_element ).
 
     "right
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_right
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_right
+*                                                         parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_right }| ).
     IF ls_border-right_style IS NOT INITIAL.
       lv_value = ls_border-right_style.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"| ).
     ENDIF.
+    lo_ostream->write_string( |>| ).
 
     create_xl_styles_color_node(
-        io_document        = lo_document
-        io_parent          = lo_sub_element
+        lo_ostream        = lo_ostream
+*        io_parent          = lo_sub_element
         is_color           = ls_border-right_color ).
 
-    lo_element_border->append_child( new_child = lo_sub_element ).
+*    lo_element_border->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_right }>| ).
 
     "top
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_top
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_top
+*                                                         parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_top }| ).
     IF ls_border-top_style IS NOT INITIAL.
       lv_value = ls_border-top_style.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"| ).
     ENDIF.
+    lo_ostream->write_string( |>| ).
 
     create_xl_styles_color_node(
-        io_document        = lo_document
-        io_parent          = lo_sub_element
+        lo_ostream        = lo_ostream
+*        io_parent          = lo_sub_element
         is_color           = ls_border-top_color ).
 
-    lo_element_border->append_child( new_child = lo_sub_element ).
+*    lo_element_border->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_top }>| ).
 
     "bottom
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_bottom
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_bottom
+*                                                         parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_bottom }| ).
     IF ls_border-bottom_style IS NOT INITIAL.
       lv_value = ls_border-bottom_style.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"| ).
     ENDIF.
+    lo_ostream->write_string( |>| ).
 
     create_xl_styles_color_node(
-        io_document        = lo_document
-        io_parent          = lo_sub_element
+        lo_ostream        = lo_ostream
+*        io_parent          = lo_sub_element
         is_color           = ls_border-bottom_color ).
 
-    lo_element_border->append_child( new_child = lo_sub_element ).
+*    lo_element_border->append_child( new_child = lo_sub_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_bottom }>| ).
 
     "diagonal
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_diagonal
-                                                         parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_diagonal
+*                                                         parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_diagonal }| ).
     IF ls_border-diagonal_style IS NOT INITIAL.
       lv_value = ls_border-diagonal_style.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_style
+*                                        value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_style }="{ lv_value }"| ).
     ENDIF.
+    lo_ostream->write_string( |>| ).
 
     create_xl_styles_color_node(
-        io_document        = lo_document
-        io_parent          = lo_sub_element
+        lo_ostream        = lo_ostream
+*        io_parent          = lo_sub_element
         is_color           = ls_border-diagonal_color ).
 
-    lo_element_border->append_child( new_child = lo_sub_element ).
-    lo_element_borders->append_child( new_child = lo_element_border ).
-  ENDLOOP.
+*    lo_element_border->append_child( new_child = lo_sub_element ).
+*    lo_element_borders->append_child( new_child = lo_element_border ).
+    lo_ostream->write_string( |</{ lc_xml_node_diagonal }>| ).
 
-  " update attribute "count"
-  DESCRIBE TABLE lt_fonts LINES lv_fonts_count.
-  MOVE lv_fonts_count TO lv_value.
-  SHIFT lv_value RIGHT DELETING TRAILING space.
-  SHIFT lv_value LEFT DELETING LEADING space.
-  lo_element_fonts->set_attribute_ns( name  = lc_xml_attr_count
-                                      value = lv_value ).
-  DESCRIBE TABLE lt_fills LINES lv_fills_count.
-  MOVE lv_fills_count TO lv_value.
-  SHIFT lv_value RIGHT DELETING TRAILING space.
-  SHIFT lv_value LEFT DELETING LEADING space.
-  lo_element_fills->set_attribute_ns( name  = lc_xml_attr_count
-                                      value = lv_value ).
-  DESCRIBE TABLE lt_borders LINES lv_borders_count.
-  MOVE lv_borders_count TO lv_value.
-  SHIFT lv_value RIGHT DELETING TRAILING space.
-  SHIFT lv_value LEFT DELETING LEADING space.
-  lo_element_borders->set_attribute_ns( name  = lc_xml_attr_count
-                                        value = lv_value ).
+    lo_ostream->write_string( |</{ lc_xml_node_border }>| ).
+  ENDLOOP.
+  lo_ostream->write_string( |</{ lc_xml_node_borders }>| ).
+
+
+  " Append to root node
+*  lo_element_root->append_child( new_child = lo_element_numfmts ).
+*  lo_element_root->append_child( new_child = lo_element_fonts ).
+*  lo_element_root->append_child( new_child = lo_element_fills ).
+*  lo_element_root->append_child( new_child = lo_element_borders ).
+
+  " cellstylexfs node
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_cellstylexfs
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_count
+*                                value = '1' ).
+  lo_ostream->write_string( |<{ lc_xml_node_cellstylexfs }| ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="1">| ).
+*  lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_xf
+*                                                       parent = lo_document ).
+*
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_numfmtid
+*                                    value = c_off ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_fontid
+*                                    value = c_off ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_fillid
+*                                    value = c_off ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_borderid
+*                                    value = c_off ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_xf }| ).
+  lo_ostream->write_string( | { lc_xml_attr_numfmtid }="{ c_off }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_fontid }="{ c_off }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_fillid }="{ c_off }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_borderid }="{ c_off }"/>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_cellstylexfs }>| ).
+
+*  lo_element->append_child( new_child = lo_sub_element ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
   DESCRIBE TABLE lt_cellxfs LINES lv_cellxfs_count.
   MOVE lv_cellxfs_count TO lv_value.
   SHIFT lv_value RIGHT DELETING TRAILING space.
   SHIFT lv_value LEFT DELETING LEADING space.
-  lo_element_cellxfs->set_attribute_ns( name  = lc_xml_attr_count
-                                        value = lv_value ).
-
-  " Append to root node
-  lo_element_root->append_child( new_child = lo_element_numfmts ).
-  lo_element_root->append_child( new_child = lo_element_fonts ).
-  lo_element_root->append_child( new_child = lo_element_fills ).
-  lo_element_root->append_child( new_child = lo_element_borders ).
-
-  " cellstylexfs node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_cellstylexfs
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_count
-                                value = '1' ).
-  lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_xf
-                                                       parent = lo_document ).
-
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_numfmtid
-                                    value = c_off ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_fontid
-                                    value = c_off ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_fillid
-                                    value = c_off ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_borderid
-                                    value = c_off ).
-
-  lo_element->append_child( new_child = lo_sub_element ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element_cellxfs->set_attribute_ns( name  = lc_xml_attr_count
+*                                        value = lv_value ).
+  lo_ostream->write_string( |<{ lc_xml_node_cellxfs }| ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_value }">| ).
 
   LOOP AT lt_cellxfs INTO ls_cellxfs.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_xf
-                                                        parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_xf
+*                                                        parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_xf }| ).
     MOVE ls_cellxfs-numfmtid TO lv_value.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_numfmtid
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_numfmtid
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_numfmtid }="{ lv_value }"| ).
     MOVE ls_cellxfs-fontid TO lv_value.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_fontid
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_fontid
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_fontid }="{ lv_value }"| ).
     MOVE ls_cellxfs-fillid TO lv_value.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_fillid
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_fillid
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_fillid }="{ lv_value }"| ).
     MOVE ls_cellxfs-borderid TO lv_value.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_borderid
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_borderid
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_borderid }="{ lv_value }"| ).
     MOVE ls_cellxfs-xfid TO lv_value.
     SHIFT lv_value RIGHT DELETING TRAILING space.
     SHIFT lv_value LEFT DELETING LEADING space.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_xfid
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_xfid
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_xfid }="{ lv_value }"| ).
+
     IF ls_cellxfs-applynumberformat EQ 1.
       MOVE ls_cellxfs-applynumberformat TO lv_value.
       SHIFT lv_value RIGHT DELETING TRAILING space.
       SHIFT lv_value LEFT DELETING LEADING space.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_applynumberformat
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_applynumberformat
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_applynumberformat }="{ lv_value }"| ).
     ENDIF.
     IF ls_cellxfs-applyfont EQ 1.
       MOVE ls_cellxfs-applyfont TO lv_value.
       SHIFT lv_value RIGHT DELETING TRAILING space.
       SHIFT lv_value LEFT DELETING LEADING space.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_applyfont
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_applyfont
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_applyfont }="{ lv_value }"| ).
     ENDIF.
     IF ls_cellxfs-applyfill EQ 1.
       MOVE ls_cellxfs-applyfill TO lv_value.
       SHIFT lv_value RIGHT DELETING TRAILING space.
       SHIFT lv_value LEFT DELETING LEADING space.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_applyfill
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_applyfill
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_applyfill }="{ lv_value }"| ).
     ENDIF.
     IF ls_cellxfs-applyborder EQ 1.
       MOVE ls_cellxfs-applyborder TO lv_value.
       SHIFT lv_value RIGHT DELETING TRAILING space.
       SHIFT lv_value LEFT DELETING LEADING space.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_applyborder
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_applyborder
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_applyborder }="{ lv_value }"| ).
     ENDIF.
+
     IF ls_cellxfs-applyalignment EQ 1. " depends on each style not for all the sheet
       MOVE ls_cellxfs-applyalignment TO lv_value.
       SHIFT lv_value RIGHT DELETING TRAILING space.
       SHIFT lv_value LEFT DELETING LEADING space.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_applyalignment
-                                    value = lv_value ).
-      lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_alignment
-                                                             parent = lo_document ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_applyalignment
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_applyalignment }="{ lv_value }"| ).
+    ENDIF.
+
+    IF ls_cellxfs-applyprotection EQ 1.
+      MOVE ls_cellxfs-applyprotection TO lv_value.
+      CONDENSE lv_value NO-GAPS.
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_applyprotection
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_applyprotection }="{ lv_value }"| ).
+    ENDIF.
+
+    lo_ostream->write_string( |>| ).
+
+    IF ls_cellxfs-applyalignment EQ 1. " depends on each style not for all the sheet
+*      lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_alignment
+*                                                             parent = lo_document ).
+      lo_ostream->write_string( |<{ lc_xml_node_alignment }| ).
+
       ADD 1 TO ls_cellxfs-alignmentid. "Table index starts from 1
       READ TABLE lt_alignments INTO ls_alignment INDEX ls_cellxfs-alignmentid.
       SUBTRACT 1 FROM ls_cellxfs-alignmentid.
       IF ls_alignment-horizontal IS NOT INITIAL.
         MOVE ls_alignment-horizontal TO lv_value.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_horizontal
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_horizontal
+*                                            value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_horizontal }="{ lv_value }"| ).
       ENDIF.
       IF ls_alignment-vertical IS NOT INITIAL.
         MOVE ls_alignment-vertical TO lv_value.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_vertical
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_vertical
+*                                            value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_vertical }="{ lv_value }"| ).
       ENDIF.
       IF ls_alignment-wraptext EQ abap_true.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_wraptext
-                                            value = c_on ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_wraptext
+*                                            value = c_on ).
+        lo_ostream->write_string( | { lc_xml_attr_wraptext }="{ c_on }"| ).
       ENDIF.
       IF ls_alignment-textrotation IS NOT INITIAL.
         MOVE ls_alignment-textrotation TO lv_value.
         SHIFT lv_value RIGHT DELETING TRAILING space.
         SHIFT lv_value LEFT DELETING LEADING space.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_textrotation
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_textrotation
+*                                            value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_textrotation }="{ lv_value }"| ).
       ENDIF.
       IF ls_alignment-shrinktofit EQ abap_true.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_shrinktofit
-                                            value = c_on ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_shrinktofit
+*                                            value = c_on ).
+        lo_ostream->write_string( | { lc_xml_attr_shrinktofit }="{ c_on }"| ).
       ENDIF.
       IF ls_alignment-indent IS NOT INITIAL.
         MOVE ls_alignment-indent TO lv_value.
         SHIFT lv_value RIGHT DELETING TRAILING space.
         SHIFT lv_value LEFT DELETING LEADING space.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_indent
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_indent
+*                                            value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_indent }="{ lv_value }"| ).
       ENDIF.
-
-      lo_element->append_child( new_child = lo_sub_element_2 ).
+      lo_ostream->write_string( |/>| ).
+*      lo_element->append_child( new_child = lo_sub_element_2 ).
     ENDIF.
+
     IF ls_cellxfs-applyprotection EQ 1.
-      MOVE ls_cellxfs-applyprotection TO lv_value.
-      CONDENSE lv_value NO-GAPS.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_applyprotection
-                                    value = lv_value ).
-      lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_protection
-                                                             parent = lo_document ).
+*      lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_protection
+*                                                             parent = lo_document ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_protection }| ).
       ADD 1 TO ls_cellxfs-protectionid. "Table index starts from 1
       READ TABLE lt_protections INTO ls_protection INDEX ls_cellxfs-protectionid.
       SUBTRACT 1 FROM ls_cellxfs-protectionid.
       IF ls_protection-locked IS NOT INITIAL.
         MOVE ls_protection-locked TO lv_value.
         CONDENSE lv_value.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_locked
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_locked
+*                                            value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_locked }="{ lv_value }"| ).
       ENDIF.
       IF ls_protection-hidden IS NOT INITIAL.
         MOVE ls_protection-hidden TO lv_value.
         CONDENSE lv_value.
-        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_hidden
-                                            value = lv_value ).
+*        lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_hidden
+*                                            value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_hidden }="{ lv_value }"| ).
       ENDIF.
-      lo_element->append_child( new_child = lo_sub_element_2 ).
+*      lo_element->append_child( new_child = lo_sub_element_2 ).
+      lo_ostream->write_string( |/>| ).
     ENDIF.
-    lo_element_cellxfs->append_child( new_child = lo_element ).
+*    lo_element_cellxfs->append_child( new_child = lo_element ).
+
+    lo_ostream->write_string( |</{ lc_xml_node_xf }>| ).
   ENDLOOP.
 
-  lo_element_root->append_child( new_child = lo_element_cellxfs ).
+  lo_ostream->write_string( |</{ lc_xml_node_cellxfs }>| ).
+
+*  lo_element_root->append_child( new_child = lo_element_cellxfs ).
 
   " cellStyles node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_cellstyles
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_count
-                                value = '1' ).
-  lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_cellstyle
-                                                       parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_cellstyles
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_count
+*                                value = '1' ).
 
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
-                                    value = 'Normal' ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_xfid
-                                    value = c_off ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_builtinid
-                                    value = c_off ).
+  lo_ostream->write_string( |<{ lc_xml_node_cellstyles }| ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="1">| ).
 
-  lo_element->append_child( new_child = lo_sub_element ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_cellstyle
+*                                                       parent = lo_document ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
+*                                    value = 'Normal' ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_xfid
+*                                    value = c_off ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_builtinid
+*                                    value = c_off ).
+  lo_ostream->write_string( |<{ lc_xml_node_cellstyle }| ).
+  lo_ostream->write_string( | { lc_xml_attr_name }="Normal"| ).
+  lo_ostream->write_string( | { lc_xml_attr_xfid }="{ c_off }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_builtinid }="{ c_off }"/>| ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_cellstyles }>| ).
+
+
+*  lo_element->append_child( new_child = lo_sub_element ).
+*  lo_element_root->append_child( new_child = lo_element ).
 
   " dxfs node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_dxfs
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_dxfs
+*                                                   parent = lo_document ).
+
+" get dfxs count
+  lo_iterator = me->excel->get_worksheets_iterator( ).
+  lv_dfx_count = 0.
+  WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
+    lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
+    lo_iterator2 = lo_worksheet->get_style_cond_iterator( ).
+    WHILE lo_iterator2->if_object_collection_iterator~has_next( ) EQ abap_true.
+      lo_style_cond ?= lo_iterator2->if_object_collection_iterator~get_next( ).
+      CASE lo_style_cond->rule.
+        WHEN zcl_excel_style_cond=>c_rule_cellis.
+          ADD 1 TO lv_dfx_count.
+        WHEN zcl_excel_style_cond=>c_rule_expression.
+          ADD 1 TO lv_dfx_count.
+        WHEN zcl_excel_style_cond=>c_rule_top10.
+          ADD 1 TO lv_dfx_count.
+        WHEN zcl_excel_style_cond=>c_rule_above_average.
+          ADD 1 TO lv_dfx_count.
+        WHEN OTHERS.
+          CONTINUE.
+      ENDCASE.
+    ENDWHILE.
+  ENDWHILE.
+
+  lo_ostream->write_string( |<{ lc_xml_node_dxfs }| ).
+  lv_value = lv_dfx_count.
+  CONDENSE lv_value.
+  lo_ostream->write_string( | { lc_xml_attr_count }="{ lv_value }">| ).
 
   lo_iterator = me->excel->get_worksheets_iterator( ).
   " get sheets
+  lv_dfx_count = 0.
   WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
     lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
     " Conditional formatting styles into exch sheet
@@ -6864,6 +8789,7 @@ METHOD create_xl_styles.
 * begin of change issue #366 - missing conditional rules: top10, move dfx-styles to own method
         WHEN zcl_excel_style_cond=>c_rule_cellis.
           me->create_dxf_style( EXPORTING
+                                  lo_ostream       = lo_ostream
                                   iv_cell_style    = lo_style_cond->mode_cellis-cell_style
                                   io_dxf_element   = lo_element
                                   io_ixml_document = lo_document
@@ -6875,6 +8801,7 @@ METHOD create_xl_styles.
 
         WHEN zcl_excel_style_cond=>c_rule_expression.
           me->create_dxf_style( EXPORTING
+                        lo_ostream       = lo_ostream
                         iv_cell_style    = lo_style_cond->mode_expression-cell_style
                         io_dxf_element   = lo_element
                         io_ixml_document = lo_document
@@ -6888,6 +8815,7 @@ METHOD create_xl_styles.
 
         WHEN zcl_excel_style_cond=>c_rule_top10.
           me->create_dxf_style( EXPORTING
+                                  lo_ostream       = lo_ostream
                                   iv_cell_style    = lo_style_cond->mode_top10-cell_style
                                   io_dxf_element   = lo_element
                                   io_ixml_document = lo_document
@@ -6899,6 +8827,7 @@ METHOD create_xl_styles.
 
         WHEN zcl_excel_style_cond=>c_rule_above_average.
           me->create_dxf_style( EXPORTING
+                                  lo_ostream       = lo_ostream
                                   iv_cell_style    = lo_style_cond->mode_above_average-cell_style
                                   io_dxf_element   = lo_element
                                   io_ixml_document = lo_document
@@ -6915,47 +8844,64 @@ METHOD create_xl_styles.
     ENDWHILE.
   ENDWHILE.
 
-  lv_value = lv_dfx_count.
-  CONDENSE lv_value.
-  lo_element->set_attribute_ns( name  = lc_xml_attr_count
-                                value = lv_value ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_count
+*                                value = lv_value ).
+
+  lo_ostream->write_string( |</{ lc_xml_node_dxfs }>| ).
+
+*  lo_element_root->append_child( new_child = lo_element ).
 
   " tableStyles node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_tablestyles
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_count
-                                value = '0' ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_defaulttablestyle
-                                value = zcl_excel_table=>builtinstyle_medium9 ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_defaultpivotstyle
-                                value = zcl_excel_table=>builtinstyle_pivot_light16 ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_tablestyles
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_count
+*                                value = '0' ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_defaulttablestyle
+*                                value = zcl_excel_table=>builtinstyle_medium9 ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_defaultpivotstyle
+*                                value = zcl_excel_table=>builtinstyle_pivot_light16 ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_tablestyles }| ).
+  lo_ostream->write_string( | { lc_xml_attr_count }="0"| ).
+  lo_ostream->write_string( | { lc_xml_attr_defaulttablestyle }="{ zcl_excel_table=>builtinstyle_medium9 }"| ).
+  lo_ostream->write_string( | { lc_xml_attr_defaultpivotstyle }="{ zcl_excel_table=>builtinstyle_pivot_light16 }"/>| ).
 
   "write legacy color palette in case any indexed color was changed
   IF excel->legacy_palette->is_modified( ) = abap_true.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_colors
-                                                   parent   = lo_document ).
-    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_indexedcolors
-                                                       parent   = lo_document ).
-    lo_element->append_child( new_child = lo_sub_element ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_colors
+*                                                   parent   = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_colors }>| ).
+*    lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_indexedcolors
+*                                                       parent   = lo_document ).
+*    lo_element->append_child( new_child = lo_sub_element ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_indexedcolors }>| ).
 
     lt_colors = excel->legacy_palette->get_colors( ).
     LOOP AT lt_colors INTO ls_color.
-      lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_rgbcolor
-                                                             parent = lo_document ).
-      lv_value = ls_color.
-      lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_rgb
-                                          value = lv_value ).
-      lo_sub_element->append_child( new_child = lo_sub_element_2 ).
+*      lo_sub_element_2 = lo_document->create_simple_element( name   = lc_xml_node_rgbcolor
+*                                                             parent = lo_document ).
+*      lv_value = ls_color.
+*      lo_sub_element_2->set_attribute_ns( name  = lc_xml_attr_rgb
+*                                          value = lv_value ).
+      lo_ostream->write_string( |<{ lc_xml_node_rgbcolor }| ).
+      lo_ostream->write_string( | { lc_xml_attr_rgb }="{ lv_value }"/>| ).
+
+*      lo_sub_element->append_child( new_child = lo_sub_element_2 ).
     ENDLOOP.
 
-    lo_element_root->append_child( new_child = lo_element ).
+    lo_ostream->write_string( |</{ lc_xml_node_indexedcolors }>| ).
+
+    lo_ostream->write_string( |</{ lc_xml_node_colors }>| ).
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
+
+  lo_ostream->write_string( |</{ lc_xml_node_stylesheet }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
@@ -6975,39 +8921,59 @@ METHOD create_xl_styles_color_node.
         is_color-theme <> zcl_excel_style_color=>c_theme_not_set OR
         is_color-tint IS NOT INITIAL.
 
-  lo_sub_element = io_document->create_simple_element(
-      name      = iv_color_elem_name
-      parent    = io_parent ).
+*  lo_sub_element = io_document->create_simple_element(
+*      name      = iv_color_elem_name
+*      parent    = io_parent ).
+
+  lo_ostream->write_string( |<{ iv_color_elem_name }| ).
 
   IF is_color-rgb IS NOT INITIAL.
     lv_value = is_color-rgb.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_rgb
-                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_rgb
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_rgb }="{ lv_value }"| ).
   ENDIF.
 
   IF is_color-indexed <> zcl_excel_style_color=>c_indexed_not_set.
     lv_value = zcl_excel_common=>number_to_excel_string( is_color-indexed ).
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_indexed
-                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_indexed
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_indexed }="{ lv_value }"| ).
   ENDIF.
 
   IF is_color-theme <> zcl_excel_style_color=>c_theme_not_set.
     lv_value = zcl_excel_common=>number_to_excel_string( is_color-theme ).
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_theme
-                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_theme
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_theme }="{ lv_value }"| ).
   ENDIF.
 
   IF is_color-tint IS NOT INITIAL.
     lv_value = zcl_excel_common=>number_to_excel_string( is_color-tint ).
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_tint
-                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_tint
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_tint }="{ lv_value }"| ).
   ENDIF.
+  lo_ostream->write_string( |/>| ).
 
-  io_parent->append_child( new_child = lo_sub_element ).
+*  io_parent->append_child( new_child = lo_sub_element ).
 ENDMETHOD.
 
 
 METHOD create_xl_table.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
 
   DATA: lc_xml_node_table         TYPE string VALUE 'table',
         lc_xml_node_relationship  TYPE string VALUE 'Relationship',
@@ -7037,20 +9003,25 @@ METHOD create_xl_table.
 
 **********************************************************************
 * STEP 1: Create xml
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node table
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_table
-                                                         parent = lo_document ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_table
+*                                                         parent = lo_document ).
+*
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_table_ns  ).
 
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_table_ns  ).
+  lo_ostream->write_string( |<{ lc_xml_node_table }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_table_ns }"| ).
 
   lv_id = io_table->get_id( ).
   lv_value = zcl_excel_common=>number_to_excel_string( ip_value = lv_id ).
-  lo_element_root->set_attribute_ns( name  = lc_xml_attr_id
-                                     value = lv_value ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_id
+*                                     value = lv_value ).
+  lo_ostream->write_string( | { lc_xml_attr_id }="{ lv_value }"| ).
 
   FIND ALL OCCURRENCES OF REGEX '[^_a-zA-Z0-9]' IN io_table->settings-table_name IGNORING CASE MATCH COUNT lv_match.
   IF io_table->settings-table_name IS NOT INITIAL AND lv_match EQ 0.
@@ -7058,41 +9029,55 @@ METHOD create_xl_table.
   ELSE.
     lv_table_name = io_table->get_name( ).
   ENDIF.
-  lo_element_root->set_attribute_ns( name  = lc_xml_attr_name
-                                     value = lv_table_name ).
 
-  lo_element_root->set_attribute_ns( name  = lc_xml_attr_display_name
-                                     value = lv_table_name ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_name
+*                                     value = lv_table_name ).
+
+  lo_ostream->write_string( | { lc_xml_attr_name }="{ lv_table_name }"| ).
+
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_display_name
+*                                     value = lv_table_name ).
+
+  lo_ostream->write_string( | { lc_xml_attr_display_name }="{ lv_table_name }"| ).
 
   lv_ref = io_table->get_reference( ).
-  lo_element_root->set_attribute_ns( name  = lc_xml_attr_ref
-                                     value = lv_ref ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_ref
+*                                     value = lv_ref ).
+
+  lo_ostream->write_string( | { lc_xml_attr_ref }="{ lv_ref }"| ).
+
   IF io_table->has_totals( ) = abap_true.
-    lo_element_root->set_attribute_ns( name  = 'totalsRowCount'
-                                           value = '1' ).
+*    lo_element_root->set_attribute_ns( name  = 'totalsRowCount'
+*                                           value = '1' ).
+    lo_ostream->write_string( | totalsRowCount="1"| ).
   ELSE.
-    lo_element_root->set_attribute_ns( name  = lc_xml_attr_totals
-                                         value = '0' ).
+*    lo_element_root->set_attribute_ns( name  = lc_xml_attr_totals
+*                                         value = '0' ).
+    lo_ostream->write_string( | { lc_xml_attr_totals }="0"| ).
   ENDIF.
+
+  lo_ostream->write_string( |>| ).
 
 **********************************************************************
 * STEP 4: Create subnodes
 
   " autoFilter
   IF io_table->settings-nofilters EQ abap_false.
-    lo_element = lo_document->create_simple_element( name   = 'autoFilter'
-                                                     parent = lo_document ).
-
+*    lo_element = lo_document->create_simple_element( name   = 'autoFilter'
+*                                                     parent = lo_document ).
+    lo_ostream->write_string( |<autoFilter| ).
     lv_ref = io_table->get_reference( ip_include_totals_row = abap_false ).
-    lo_element->set_attribute_ns( name  = 'ref'
-                                  value = lv_ref ).
-
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = 'ref'
+*                                  value = lv_ref ).
+    lo_ostream->write_string( | ref="{ lv_ref }"/>| ).
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
 
   "columns
-  lo_element = lo_document->create_simple_element( name   = 'tableColumns'
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = 'tableColumns'
+*                                                   parent = lo_document ).
+
+  lo_ostream->write_string( |<tableColumns| ).
 
 *  lo_columns = io_table->get_columns( ).
   LOOP AT io_table->fieldcat INTO ls_fieldcat WHERE dynpfld = abap_true.
@@ -7101,43 +9086,64 @@ METHOD create_xl_table.
 
   lv_value = lv_num_columns.
   CONDENSE lv_value.
-  lo_element->set_attribute_ns( name  = 'count'
-                                value = lv_value ).
+*  lo_element->set_attribute_ns( name  = 'count'
+*                                value = lv_value ).
 
-  lo_element_root->append_child( new_child = lo_element ).
+  lo_ostream->write_string( | count="{ lv_value }">| ).
+
+*  lo_element_root->append_child( new_child = lo_element ).
 
   LOOP AT io_table->fieldcat INTO ls_fieldcat WHERE dynpfld = abap_true.
-    lo_element2 = lo_document->create_simple_element_ns( name   = 'tableColumn'
-                                                                parent = lo_element ).
+*    lo_element2 = lo_document->create_simple_element_ns( name   = 'tableColumn'
+*                                                                parent = lo_element ).
+
+    lo_ostream->write_string( |<tableColumn| ).
 
     lv_value = ls_fieldcat-position.
     SHIFT lv_value LEFT DELETING LEADING '0'.
-    lo_element2->set_attribute_ns( name  = 'id'
-                                  value = lv_value ).
+*    lo_element2->set_attribute_ns( name  = 'id'
+*                                  value = lv_value ).
+    lo_ostream->write_string( | id="{ lv_value }"| ).
+
     lv_value = ls_fieldcat-scrtext_l.
-    lo_element2->set_attribute_ns( name  = 'name'
-                                  value = lv_value ).
+*    lo_element2->set_attribute_ns( name  = 'name'
+*                                  value = lv_value ).
+    lo_ostream->write_string( | name="{ lv_value }"| ).
 
     IF ls_fieldcat-totals_function IS NOT INITIAL.
-      lo_element2->set_attribute_ns( name  = 'totalsRowFunction'
-                                        value = ls_fieldcat-totals_function ).
+*      lo_element2->set_attribute_ns( name  = 'totalsRowFunction'
+*                                        value = ls_fieldcat-totals_function ).
+      lo_ostream->write_string( | totalsRowFunction="{ ls_fieldcat-totals_function }"| ).
     ENDIF.
 
-    lo_element->append_child( new_child = lo_element2 ).
+    lo_ostream->write_string( |/>| ).
+
+*    lo_element->append_child( new_child = lo_element2 ).
   ENDLOOP.
 
+  lo_ostream->write_string( |</tableColumns>| ).
 
-  lo_element  = lo_document->create_simple_element( name   = 'tableStyleInfo'
-                                                         parent = lo_element_root ).
 
-  lo_element->set_attribute_ns( name  = 'name'
-                                     value = io_table->settings-table_style  ).
+*  lo_element  = lo_document->create_simple_element( name   = 'tableStyleInfo'
+*                                                         parent = lo_element_root ).
+*
 
-  lo_element->set_attribute_ns( name  = 'showFirstColumn'
-                                     value = '0' ).
+  lo_ostream->write_string( |<tableStyleInfo| ).
 
-  lo_element->set_attribute_ns( name  = 'showLastColumn'
-                                     value = '0' ).
+*  lo_element->set_attribute_ns( name  = 'name'
+*                                     value = io_table->settings-table_style  ).
+
+  lo_ostream->write_string( | name="{ io_table->settings-table_style }"| ).
+
+*  lo_element->set_attribute_ns( name  = 'showFirstColumn'
+*                                     value = '0' ).
+
+  lo_ostream->write_string( | showFirstColumn="0"| ).
+
+*  lo_element->set_attribute_ns( name  = 'showLastColumn'
+*                                     value = '0' ).
+
+  lo_ostream->write_string( | showLastColumn="0"| ).
 
   IF io_table->settings-show_row_stripes = abap_true.
     lv_value = '1'.
@@ -7145,8 +9151,10 @@ METHOD create_xl_table.
     lv_value = '0'.
   ENDIF.
 
-  lo_element->set_attribute_ns( name  = 'showRowStripes'
-                                     value = lv_value ).
+*  lo_element->set_attribute_ns( name  = 'showRowStripes'
+*                                     value = lv_value ).
+
+  lo_ostream->write_string( | showRowStripes="{ lv_value }"| ).
 
   IF io_table->settings-show_column_stripes = abap_true.
     lv_value = '1'.
@@ -7154,33 +9162,227 @@ METHOD create_xl_table.
     lv_value = '0'.
   ENDIF.
 
-  lo_element->set_attribute_ns( name  = 'showColumnStripes'
-                                     value = lv_value ).
+*  lo_element->set_attribute_ns( name  = 'showColumnStripes'
+*                                     value = lv_value ).
 
-  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( | showColumnStripes="{ lv_value }"/>| ).
+
+*  lo_element_root->append_child( new_child = lo_element ).
+
+
+  lo_ostream->write_string( |</{ lc_xml_node_table }>| ).
+
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
 ENDMETHOD.
 
 
-method create_xl_theme.
-  data: lo_theme type ref to zcl_excel_theme.
+*METHOD create_xl_table.
+*
+*  DATA: lc_xml_node_table         TYPE string VALUE 'table',
+*        lc_xml_node_relationship  TYPE string VALUE 'Relationship',
+*        " Node attributes
+*        lc_xml_attr_id            TYPE string VALUE 'id',
+*        lc_xml_attr_name          TYPE string VALUE 'name',
+*        lc_xml_attr_display_name  TYPE string VALUE 'displayName',
+*        lc_xml_attr_ref           TYPE string VALUE 'ref',
+*        lc_xml_attr_totals        TYPE string VALUE 'totalsRowShown',
+*        " Node namespace
+*        lc_xml_node_table_ns      TYPE string VALUE 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+*        " Node id
+*        lc_xml_node_ridx_id       TYPE string VALUE 'rId#'.
+*
+*  DATA: lo_document       TYPE REF TO if_ixml_document,
+*        lo_element_root   TYPE REF TO if_ixml_element,
+*        lo_element        TYPE REF TO if_ixml_element,
+*        lo_element2       TYPE REF TO if_ixml_element,
+*        lv_table_name         TYPE string,
+*        lv_id                 TYPE i,
+*        lv_match              TYPE i,
+*        lv_ref                TYPE string,
+*        lv_value              TYPE string,
+*        lv_num_columns        TYPE i,
+*        ls_fieldcat           TYPE zexcel_s_fieldcatalog.
+*
+*
+***********************************************************************
+** STEP 1: Create xml
+*  lo_document = create_xml_document( ).
+*
+***********************************************************************
+** STEP 3: Create main node table
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_table
+*                                                         parent = lo_document ).
+*
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_table_ns  ).
+*
+*  lv_id = io_table->get_id( ).
+*  lv_value = zcl_excel_common=>number_to_excel_string( ip_value = lv_id ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_id
+*                                     value = lv_value ).
+*
+*  FIND ALL OCCURRENCES OF REGEX '[^_a-zA-Z0-9]' IN io_table->settings-table_name IGNORING CASE MATCH COUNT lv_match.
+*  IF io_table->settings-table_name IS NOT INITIAL AND lv_match EQ 0.
+*    lv_table_name = io_table->settings-table_name.
+*  ELSE.
+*    lv_table_name = io_table->get_name( ).
+*  ENDIF.
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_name
+*                                     value = lv_table_name ).
+*
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_display_name
+*                                     value = lv_table_name ).
+*
+*  lv_ref = io_table->get_reference( ).
+*  lo_element_root->set_attribute_ns( name  = lc_xml_attr_ref
+*                                     value = lv_ref ).
+*  IF io_table->has_totals( ) = abap_true.
+*    lo_element_root->set_attribute_ns( name  = 'totalsRowCount'
+*                                           value = '1' ).
+*  ELSE.
+*    lo_element_root->set_attribute_ns( name  = lc_xml_attr_totals
+*                                         value = '0' ).
+*  ENDIF.
+*
+***********************************************************************
+** STEP 4: Create subnodes
+*
+*  " autoFilter
+*  IF io_table->settings-nofilters EQ abap_false.
+*    lo_element = lo_document->create_simple_element( name   = 'autoFilter'
+*                                                     parent = lo_document ).
+*
+*    lv_ref = io_table->get_reference( ip_include_totals_row = abap_false ).
+*    lo_element->set_attribute_ns( name  = 'ref'
+*                                  value = lv_ref ).
+*
+*    lo_element_root->append_child( new_child = lo_element ).
+*  ENDIF.
+*
+*  "columns
+*  lo_element = lo_document->create_simple_element( name   = 'tableColumns'
+*                                                   parent = lo_document ).
+*
+**  lo_columns = io_table->get_columns( ).
+*  LOOP AT io_table->fieldcat INTO ls_fieldcat WHERE dynpfld = abap_true.
+*    ADD 1 TO lv_num_columns.
+*  ENDLOOP.
+*
+*  lv_value = lv_num_columns.
+*  CONDENSE lv_value.
+*  lo_element->set_attribute_ns( name  = 'count'
+*                                value = lv_value ).
+*
+*  lo_element_root->append_child( new_child = lo_element ).
+*
+*  LOOP AT io_table->fieldcat INTO ls_fieldcat WHERE dynpfld = abap_true.
+*    lo_element2 = lo_document->create_simple_element_ns( name   = 'tableColumn'
+*                                                                parent = lo_element ).
+*
+*    lv_value = ls_fieldcat-position.
+*    SHIFT lv_value LEFT DELETING LEADING '0'.
+*    lo_element2->set_attribute_ns( name  = 'id'
+*                                  value = lv_value ).
+*    lv_value = ls_fieldcat-scrtext_l.
+*    lo_element2->set_attribute_ns( name  = 'name'
+*                                  value = lv_value ).
+*
+*    IF ls_fieldcat-totals_function IS NOT INITIAL.
+*      lo_element2->set_attribute_ns( name  = 'totalsRowFunction'
+*                                        value = ls_fieldcat-totals_function ).
+*    ENDIF.
+*
+*    lo_element->append_child( new_child = lo_element2 ).
+*  ENDLOOP.
+*
+*
+*  lo_element  = lo_document->create_simple_element( name   = 'tableStyleInfo'
+*                                                         parent = lo_element_root ).
+*
+*  lo_element->set_attribute_ns( name  = 'name'
+*                                     value = io_table->settings-table_style  ).
+*
+*  lo_element->set_attribute_ns( name  = 'showFirstColumn'
+*                                     value = '0' ).
+*
+*  lo_element->set_attribute_ns( name  = 'showLastColumn'
+*                                     value = '0' ).
+*
+*  IF io_table->settings-show_row_stripes = abap_true.
+*    lv_value = '1'.
+*  ELSE.
+*    lv_value = '0'.
+*  ENDIF.
+*
+*  lo_element->set_attribute_ns( name  = 'showRowStripes'
+*                                     value = lv_value ).
+*
+*  IF io_table->settings-show_column_stripes = abap_true.
+*    lv_value = '1'.
+*  ELSE.
+*    lv_value = '0'.
+*  ENDIF.
+*
+*  lo_element->set_attribute_ns( name  = 'showColumnStripes'
+*                                     value = lv_value ).
+*
+*  lo_element_root->append_child( new_child = lo_element ).
+***********************************************************************
+** STEP 5: Create xstring stream
+*  ep_content = render_xml_document( lo_document ).
+*
+*ENDMETHOD.
+
+
+METHOD create_xl_theme.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
+  DATA: lo_theme TYPE REF TO zcl_excel_theme.
 
   excel->get_theme(
-  importing
-    eo_theme = lo_theme
+    IMPORTING
+      eo_theme = lo_theme
     ).
-  if lo_theme is initial.
-    create object lo_theme.
-  endif.
-  ep_content = lo_theme->write_theme( ).
+  IF lo_theme IS INITIAL.
+    CREATE OBJECT lo_theme.
+  ENDIF.
+  lo_theme->write_theme( lo_ostream ).
 
-endmethod.
+ENDMETHOD.
 
 
 METHOD create_xl_workbook.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+
+  lo_streamfactory = ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+  DATA:      lc_xml_attr_codename      TYPE string VALUE 'codeName'.
+
 *--------------------------------------------------------------------*
 * issue #230   - Pimp my Code
 *              - Stefan Schmoecker,      (done)              2012-11-07
@@ -7254,82 +9456,133 @@ METHOD create_xl_workbook.
 
 **********************************************************************
 * STEP 1: Create [Content_Types].xml into the root of the ZIP
-  lo_document = create_xml_document( ).
+*  lo_document = create_xml_document( ).
+
+  lo_ostream->write_string( '<?xml version="1.0" encoding="utf-8" standalone="yes"?>' ).
 
 **********************************************************************
 * STEP 3: Create main node
-  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_workbook
-                                                         parent = lo_document ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns'
-                                     value = lc_xml_node_ns ).
-  lo_element_root->set_attribute_ns( name  = 'xmlns:r'
-                                     value = lc_xml_node_r_ns ).
+*  lo_element_root  = lo_document->create_simple_element( name   = lc_xml_node_workbook
+*                                                         parent = lo_document ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns'
+*                                     value = lc_xml_node_ns ).
+*  lo_element_root->set_attribute_ns( name  = 'xmlns:r'
+*                                     value = lc_xml_node_r_ns ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_workbook }| ).
+  lo_ostream->write_string( | xmlns="{ lc_xml_node_ns }"| ).
+  lo_ostream->write_string( | xmlns:r="{ lc_xml_node_r_ns }">| ).
 
 **********************************************************************
 * STEP 4: Create subnode
   " fileVersion node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_fileversion
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_appname
-                                value = 'xl' ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_lastedited
-                                value = '4' ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_lowestedited
-                                value = '4' ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_rupbuild
-                                value = '4506' ).
-  lo_element_root->append_child( new_child = lo_element ).
 
-  " fileVersion node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_workbookpr
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_fileversion
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_appname
+*                                value = 'xl' ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_lastedited
+*                                value = '4' ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_lowestedited
+*                                value = '4' ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_rupbuild
+*                                value = '4506' ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_fileversion }| ).
+  lo_ostream->write_string( | { lc_xml_attr_appname }="xl"| ).
+  lo_ostream->write_string( | { lc_xml_attr_lastedited }="4"| ).
+  lo_ostream->write_string( | { lc_xml_attr_lowestedited }="4"| ).
+  lo_ostream->write_string( | { lc_xml_attr_rupbuild }="4506"| ).
+
+  IF add_macro = abap_true.
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_codename
+*                                  value = me->excel->zif_excel_book_vba_project~codename ).
+    lo_ostream->write_string( | { lc_xml_attr_codename }="{ me->excel->zif_excel_book_vba_project~codename }"| ).
+  ENDIF.
+  lo_ostream->write_string( |/>| ).
+
+  " workbookpr node
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_workbookpr
+*                                                   parent = lo_document ).
 *  lo_element->set_attribute_ns( name  = lc_xml_attr_themeversion
 *                                value = '124226' ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+
+  lo_ostream->write_string( |<{ lc_xml_node_workbookpr }| ).
+  IF add_macro = abap_true.
+
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_codename
+*                                  value = me->excel->zif_excel_book_vba_project~codename_pr ).
+    lo_ostream->write_string( | { lc_xml_attr_codename }="{ me->excel->zif_excel_book_vba_project~codename_pr }"| ).
+  ENDIF.
+  lo_ostream->write_string( |/>| ).
 
   " workbookProtection node
   IF me->excel->zif_excel_book_protection~protected EQ abap_true.
-    lo_element = lo_document->create_simple_element( name   = lc_xml_node_workbookprotection
-                                                     parent = lo_document ).
+*    lo_element = lo_document->create_simple_element( name   = lc_xml_node_workbookprotection
+*                                                     parent = lo_document ).
+
+    lo_ostream->write_string( |<{ lc_xml_node_workbookprotection }| ).
+
     MOVE me->excel->zif_excel_book_protection~workbookpassword TO lv_value.
     IF lv_value IS NOT INITIAL.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_workbookpassword
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_workbookpassword
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_workbookpassword }="{ lv_value }"| ).
     ENDIF.
+
     MOVE me->excel->zif_excel_book_protection~revisionspassword TO lv_value.
     IF lv_value IS NOT INITIAL.
-      lo_element->set_attribute_ns( name  = lc_xml_attr_revisionspassword
-                                    value = lv_value ).
+*      lo_element->set_attribute_ns( name  = lc_xml_attr_revisionspassword
+*                                    value = lv_value ).
+      lo_ostream->write_string( | { lc_xml_attr_revisionspassword }="{ lv_value }"| ).
     ENDIF.
+
     MOVE me->excel->zif_excel_book_protection~lockrevision TO lv_value.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_lockrevision
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_lockrevision
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_lockrevision }="{ lv_value }"| ).
+
     MOVE me->excel->zif_excel_book_protection~lockstructure TO lv_value.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_lockstructure
-                                  value = lv_value ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_lockstructure
+*                                  value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_lockstructure }="{ lv_value }"| ).
+
     MOVE me->excel->zif_excel_book_protection~lockwindows TO lv_value.
     CONDENSE lv_value NO-GAPS.
-    lo_element->set_attribute_ns( name  = lc_xml_attr_lockwindows
-                                  value = lv_value ).
-    lo_element_root->append_child( new_child = lo_element ).
+*    lo_element->set_attribute_ns( name  = lc_xml_attr_lockwindows
+*                                  value = lv_value ).
+
+    lo_ostream->write_string( | { lc_xml_attr_lockwindows }="{ lv_value }"/>| ).
+*    lo_element_root->append_child( new_child = lo_element ).
   ENDIF.
 
   " bookviews node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_bookviews
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_bookviews
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_bookviews }>| ).
   " bookview node
-  lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_workbookview
-                                                       parent = lo_document ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_xwindow
-                                    value = '120' ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_ywindow
-                                    value = '120' ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_windowwidth
-                                    value = '19035' ).
-  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_windowheight
-                                    value = '8445' ).
+*  lo_sub_element = lo_document->create_simple_element( name   = lc_xml_node_workbookview
+*                                                       parent = lo_document ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_xwindow
+*                                    value = '120' ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_ywindow
+*                                    value = '120' ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_windowwidth
+*                                    value = '19035' ).
+*  lo_sub_element->set_attribute_ns( name  = lc_xml_attr_windowheight
+*                                    value = '8445' ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_workbookview }| ).
+  lo_ostream->write_string( | { lc_xml_attr_xwindow }="120"| ).
+  lo_ostream->write_string( | { lc_xml_attr_ywindow }="120"| ).
+  lo_ostream->write_string( | { lc_xml_attr_windowwidth }="19035"| ).
+  lo_ostream->write_string( | { lc_xml_attr_windowheight }="8445"| ).
+
   " Set Active Sheet
   lv_active_sheet = excel->get_active_sheet_index( ).
 * issue #365 - test if sheet exists - otherwise set active worksheet to 1
@@ -7342,25 +9595,35 @@ METHOD create_xl_workbook.
     lv_active_sheet = lv_active_sheet - 1.
     lv_value = lv_active_sheet.
     CONDENSE lv_value.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_activetab
-                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_activetab
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_activetab }="{ lv_value }"| ).
   ENDIF.
-  lo_element->append_child( new_child = lo_sub_element )." bookview node
-  lo_element_root->append_child( new_child = lo_element )." bookviews node
+  lo_ostream->write_string( |/>| ).
+
+*  lo_element->append_child( new_child = lo_sub_element )." bookview node
+*  lo_element_root->append_child( new_child = lo_element )." bookviews node
+
+  lo_ostream->write_string( |</{ lc_xml_node_bookviews }>| ).
+
 
   " sheets node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheets
-                                                   parent = lo_document ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_sheets
+*                                                   parent = lo_document ).
+  lo_ostream->write_string( |<{ lc_xml_node_sheets }>| ).
+
   lo_iterator = excel->get_worksheets_iterator( ).
 
   " ranges node
-  lo_element_range = lo_document->create_simple_element( name   = lc_xml_node_definednames " issue 163 +
-                                                         parent = lo_document ).           " issue 163 +
+*  lo_element_range = lo_document->create_simple_element( name   = lc_xml_node_definednames " issue 163 +
+*                                                         parent = lo_document ).           " issue 163 +
 
   WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
     " sheet node
-    lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_sheet
-                                                            parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_sheet
+*                                                            parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_sheet }| ).
+
     lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
     lv_syindex = sy-index.                                                                  " question by Stefan SchmÃ¶cker 2012-12-02:  sy-index seems to do the job - but is it proven to work or purely coincedence
     lv_value = lo_worksheet->get_title( ).
@@ -7368,75 +9631,113 @@ METHOD create_xl_workbook.
     SHIFT lv_syindex LEFT DELETING LEADING space.
     lv_xml_node_ridx_id = lc_xml_node_ridx_id.
     REPLACE ALL OCCURRENCES OF '#' IN lv_xml_node_ridx_id WITH lv_syindex.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
-                                      value = lv_value ).
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_sheetid
-                                      value = lv_syindex ).
-    IF lo_worksheet->zif_excel_sheet_properties~hidden EQ zif_excel_sheet_properties=>c_hidden.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_state
-                                        value = 'hidden' ).
-    ELSEIF lo_worksheet->zif_excel_sheet_properties~hidden EQ zif_excel_sheet_properties=>c_veryhidden.
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_state
-                                        value = 'veryHidden' ).
-    ENDIF.
-    lo_sub_element->set_attribute_ns( name    = lc_xml_attr_id
-                                      prefix  = lc_r_ns
-                                      value   = lv_xml_node_ridx_id ).
-    lo_element->append_child( new_child = lo_sub_element ). " sheet node
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
+*                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_sheetid
+*                                      value = lv_syindex ).
 
-    " issue 163 >>>
-    lo_iterator_range = lo_worksheet->get_ranges_iterator( ).
+    lo_ostream->write_string( | { lc_xml_attr_name }="{ lv_value }"| ).
+    lo_ostream->write_string( | { lc_xml_attr_sheetid }="{ lv_syindex }"| ).
+
+    IF lo_worksheet->zif_excel_sheet_properties~hidden EQ zif_excel_sheet_properties=>c_hidden.
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_state
+*                                        value = 'hidden' ).
+      lo_ostream->write_string( | { lc_xml_attr_state }="hidden"| ).
+    ELSEIF lo_worksheet->zif_excel_sheet_properties~hidden EQ zif_excel_sheet_properties=>c_veryhidden.
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_state
+*                                        value = 'veryHidden' ).
+      lo_ostream->write_string( | { lc_xml_attr_state }="veryHidden"| ).
+    ENDIF.
+*    lo_sub_element->set_attribute_ns( name    = lc_xml_attr_id
+*                                      prefix  = lc_r_ns
+*                                      value   = lv_xml_node_ridx_id ).
+    lo_ostream->write_string( | { lc_r_ns }:{ lc_xml_attr_id }="{ lv_xml_node_ridx_id }"/>| ).
+
+*    lo_element->append_child( new_child = lo_sub_element ). " sheet node
+
+
+  ENDWHILE.
+*  lo_element_root->append_child( new_child = lo_element )." sheets node
+
+  lo_ostream->write_string( |</{ lc_xml_node_sheets }>| ).
+
+
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_definednames " issue 163 -
+*                                                   parent = lo_document ).           " issue 163 -
+
+  lo_ostream->write_string( |<{ lc_xml_node_definednames }>| ).
 
 *--------------------------------------------------------------------*
 * Defined names sheetlocal:  Ranges, Repeat rows and columns
 *--------------------------------------------------------------------*
+  lo_iterator = excel->get_worksheets_iterator( ).
+
+  WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
+    " issue 163 >>>
+    lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
+    lo_iterator_range = lo_worksheet->get_ranges_iterator( ).
     WHILE lo_iterator_range->if_object_collection_iterator~has_next( ) EQ abap_true.
       " range node
-      lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
-                                                              parent = lo_document ).
+*      lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
+*                                                              parent = lo_document ).
+
+      lo_ostream->write_string( |<{ lc_xml_node_definedname }| ).
+
       lo_range ?= lo_iterator_range->if_object_collection_iterator~get_next( ).
       lv_value = lo_range->name.
 
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
+*                                        value = lv_value ).
+
+      lo_ostream->write_string( | { lc_xml_attr_name }="{ lv_value }"| ).
 
 *      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid           "del #235 Repeat rows/cols - EXCEL starts couting from zero
 *                                        value = lv_xml_node_ridx_id ).             "del #235 Repeat rows/cols - and needs absolute referencing to localSheetId
       lv_value   = lv_syindex - 1.                                                  "ins #235 Repeat rows/cols
       CONDENSE lv_value NO-GAPS.                                                    "ins #235 Repeat rows/cols
-      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid
-                                        value = lv_value ).
+*      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid
+*                                        value = lv_value ).
+
+      lo_ostream->write_string( | { lc_xml_attr_localsheetid }="{ lv_value }">| ).
 
       lv_value = lo_range->get_value( ).
-      lo_sub_element->set_value( value = lv_value ).
-      lo_element_range->append_child( new_child = lo_sub_element ). " range node
+
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |</{ lc_xml_node_definedname }>| ).
+
+*      lo_sub_element->set_value( value = lv_value ).
+*      lo_element_range->append_child( new_child = lo_sub_element ). " range node
 
     ENDWHILE.
     " issue 163 <<<
-
   ENDWHILE.
-  lo_element_root->append_child( new_child = lo_element )." sheets node
-
 
 *--------------------------------------------------------------------*
 * Defined names workbookgolbal:  Ranges
 *--------------------------------------------------------------------*
 *  " ranges node
-*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_definednames " issue 163 -
-*                                                   parent = lo_document ).           " issue 163 -
   lo_iterator = excel->get_ranges_iterator( ).
 
   WHILE lo_iterator->if_object_collection_iterator~has_next( ) EQ abap_true.
     " range node
-    lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
-                                                            parent = lo_document ).
+*    lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
+*                                                            parent = lo_document ).
+    lo_ostream->write_string( |<{ lc_xml_node_definedname }| ).
+
     lo_range ?= lo_iterator->if_object_collection_iterator~get_next( ).
     lv_value = lo_range->name.
-    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
-                                      value = lv_value ).
+*    lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
+*                                      value = lv_value ).
+    lo_ostream->write_string( | { lc_xml_attr_name }="{ lv_value }">| ).
+
     lv_value = lo_range->get_value( ).
-    lo_sub_element->set_value( value = lv_value ).
-    lo_element_range->append_child( new_child = lo_sub_element ). " range node
+
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+
+    lo_ostream->write_string( |</{ lc_xml_node_definedname }>| ).
+
+*    lo_sub_element->set_value( value = lv_value ).
+*    lo_element_range->append_child( new_child = lo_sub_element ). " range node
 
   ENDWHILE.
 
@@ -7450,42 +9751,68 @@ METHOD create_xl_workbook.
 
       lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
       lv_syindex = sy-index - 1 .
-      l_guid = lo_worksheet->get_guid( ).
-      lo_autofilter = lo_autofilters->get( i_sheet_guid = l_guid ) .
+*      l_guid = lo_worksheet->get_guid( ).
+*      lo_autofilter = lo_autofilters->get( i_sheet_guid = l_guid ) .
+      lo_autofilter = lo_autofilters->get( io_worksheet = lo_worksheet ) .
       IF lo_autofilter IS BOUND.
-        lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
-                                                                parent = lo_document ).
+*        lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
+*                                                                parent = lo_document ).
+        lo_ostream->write_string( |<{ lc_xml_node_definedname }| ).
+
         lv_value = lo_autofilters->c_autofilter.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
-                                          value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_name
+*                                          value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_name }="{ lv_value }"| ).
         lv_value = lv_syindex.
         CONDENSE lv_value NO-GAPS.
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid
-                                          value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid
+*                                          value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_localsheetid }="{ lv_value }"| ).
         lv_value = '1'. " Always hidden
-        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_hidden
-                                          value = lv_value ).
+*        lo_sub_element->set_attribute_ns( name  = lc_xml_attr_hidden
+*                                          value = lv_value ).
+        lo_ostream->write_string( | { lc_xml_attr_hidden }="{ lv_value }">| ).
         lv_value = lo_autofilter->get_filter_reference( ).
-        lo_sub_element->set_value( value = lv_value ).
-        lo_element_range->append_child( new_child = lo_sub_element ). " range node
+*        lo_sub_element->set_value( value = lv_value ).
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+        lo_ostream->write_string( |</{ lc_xml_node_definedname }>| ).
+
+*        lo_element_range->append_child( new_child = lo_sub_element ). " range node
       ENDIF.
 
     ENDWHILE.
   ENDIF.
-  lo_element_root->append_child( new_child = lo_element_range ).                      " ranges node
+*  lo_element_root->append_child( new_child = lo_element_range ).                      " ranges node
 
+  lo_ostream->write_string( |</{ lc_xml_node_definednames }>| ).
 
   " calcPr node
-  lo_element = lo_document->create_simple_element( name   = lc_xml_node_calcpr
-                                                   parent = lo_document ).
-  lo_element->set_attribute_ns( name  = lc_xml_attr_calcid
-                                value = '125725' ).
-  lo_element_root->append_child( new_child = lo_element ).
+*  lo_element = lo_document->create_simple_element( name   = lc_xml_node_calcpr
+*                                                   parent = lo_document ).
+*  lo_element->set_attribute_ns( name  = lc_xml_attr_calcid
+*                                value = '125725' ).
+*  lo_element_root->append_child( new_child = lo_element ).
+
+  lo_ostream->write_string( |<{ lc_xml_node_calcpr }| ).
+  lo_ostream->write_string( | { lc_xml_attr_calcid }="125725"/>| ).
+
+
+  lo_ostream->write_string( |</{ lc_xml_node_workbook }>| ).
 
 **********************************************************************
 * STEP 5: Create xstring stream
-  ep_content = render_xml_document( lo_document ).
+*  ep_content = render_xml_document( lo_document ).
 
+ENDMETHOD.
+
+
+METHOD create_xml_document.
+  DATA lo_encoding TYPE REF TO if_ixml_encoding.
+  lo_encoding = me->ixml->create_encoding( byte_order = if_ixml_encoding=>co_platform_endian
+                                           character_set = 'utf-8' ).
+  ro_document = me->ixml->create_document( ).
+  ro_document->set_encoding( lo_encoding ).
+  ro_document->set_standalone( abap_true ).
 ENDMETHOD.
 
 
@@ -7510,6 +9837,30 @@ METHOD get_shared_string_index.
   ep_index = ls_shared_string-string_no.
 
 ENDMETHOD.
+
+
+METHOD render_xml_document.
+  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
+  DATA lo_renderer      TYPE REF TO if_ixml_renderer.
+
+  lo_streamfactory = me->ixml->create_stream_factory( ).
+  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
+
+  " remove illegal characters in the XML according to the note 1750204
+  " the following method is only available if the corresponding kernel is used
+  TRY.
+      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
+        EXPORTING
+          is_skipping = abap_true.
+    CATCH cx_sy_dyn_call_illegal_method.
+
+  ENDTRY.
+
+  lo_renderer = me->ixml->create_renderer( ostream  = lo_ostream document = io_document ).
+  lo_renderer->render( ).
+ENDMETHOD.
+
 
 METHOD set_vml_shape_footer.
 
@@ -7795,37 +10146,6 @@ METHOD set_vml_string.
               ld_7
          INTO ep_content.
 
-ENDMETHOD.
-
-METHOD create_xml_document.
-  DATA lo_encoding TYPE REF TO if_ixml_encoding.
-  lo_encoding = me->ixml->create_encoding( byte_order = if_ixml_encoding=>co_platform_endian
-                                           character_set = 'utf-8' ).
-  ro_document = me->ixml->create_document( ).
-  ro_document->set_encoding( lo_encoding ).
-  ro_document->set_standalone( abap_true ).
-ENDMETHOD.
-
-METHOD render_xml_document.
-  DATA lo_streamfactory TYPE REF TO if_ixml_stream_factory.
-  DATA lo_ostream       TYPE REF TO if_ixml_ostream.
-  DATA lo_renderer      TYPE REF TO if_ixml_renderer.
-
-  lo_streamfactory = me->ixml->create_stream_factory( ).
-  lo_ostream = lo_streamfactory->create_ostream_xstring( string = ep_content ).
-
-  " remove illegal characters in the XML according to the note 1750204
-  " the following method is only available if the corresponding kernel is used
-  TRY.
-      CALL METHOD lo_ostream->('SKIP_NON_XML_CHARACTERS')
-        EXPORTING
-          is_skipping = abap_true.
-    CATCH cx_sy_dyn_call_illegal_method.
-
-  ENDTRY.
-
-  lo_renderer = me->ixml->create_renderer( ostream  = lo_ostream document = io_document ).
-  lo_renderer->render( ).
 ENDMETHOD.
 
 

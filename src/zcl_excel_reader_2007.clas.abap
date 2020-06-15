@@ -900,6 +900,45 @@ method LOAD_SHARED_STRINGS.
 *        </sst>
 *--------------------------------------------------------------------*
 
+*  lo_shared_strings_xml = me->get_ixml_from_zip_archive( i_filename     = ip_path
+*                                                         is_normalizing = space ).  " NO!!! normalizing - otherwise leading blanks will be omitted and that is not really desired for the stringtable
+*  lo_node_si ?= lo_shared_strings_xml->find_from_name( 'si' ).
+*  WHILE lo_node_si IS BOUND.
+*
+*    APPEND INITIAL LINE TO me->shared_strings ASSIGNING <lv_shared_string>.            " Each <si>-entry in the xml-file must lead to an entry in our stringtable
+*    lo_node_si_child ?= lo_node_si->get_first_child( ).
+*    IF lo_node_si_child IS BOUND.
+*      lv_tag_name = lo_node_si_child->get_name( ).
+*      IF lv_tag_name = 't'.
+**--------------------------------------------------------------------*
+**   §1.1 - "simple" strings
+**                Example:  see above
+**--------------------------------------------------------------------*
+*        <lv_shared_string> = lo_node_si_child->get_value( ).
+*      ELSE.
+**--------------------------------------------------------------------*
+**   §1.2 - rich text formatted strings
+**       it is sufficient to strip the <t>...</t> tag from each <r>-tag and concatenate these
+**       as long as rich text formatting is not supported (2do§1) ignore all info about formatting
+**                Example:  see above
+**--------------------------------------------------------------------*
+*        WHILE lo_node_si_child IS BOUND.                                             " actually these children of <si> are <r>-tags
+*
+*          lo_node_r_child_t ?= lo_node_si_child->find_from_name( 't' ).              " extract the <t>...</t> part of each <r>-tag
+*          IF lo_node_r_child_t IS BOUND.
+*            lv_node_value = lo_node_r_child_t->get_value( ).
+*            CONCATENATE <lv_shared_string> lv_node_value INTO <lv_shared_string> RESPECTING BLANKS.
+*          ENDIF.
+*
+*          lo_node_si_child ?= lo_node_si_child->get_next( ).
+*
+*        ENDWHILE.
+*      ENDIF.
+*    ENDIF.
+*
+*    lo_node_si ?= lo_node_si->get_next( ).
+*  ENDWHILE.
+
   lo_shared_strings_xml = me->get_ixml_from_zip_archive( i_filename     = ip_path
                                                          is_normalizing = space ).  " NO!!! normalizing - otherwise leading blanks will be omitted and that is not really desired for the stringtable
   lo_node_si ?= lo_shared_strings_xml->find_from_name( 'si' ).
@@ -922,22 +961,28 @@ method LOAD_SHARED_STRINGS.
 *       as long as rich text formatting is not supported (2do§1) ignore all info about formatting
 *                Example:  see above
 *--------------------------------------------------------------------*
-        WHILE lo_node_si_child IS BOUND.                                             " actually these children of <si> are <r>-tags
+        data lo_xml type ref to if_ixml.
+        data lo_document type ref to if_ixml_document.
+        data lo_stream_factory type ref to if_ixml_stream_factory.
+        data lo_elem type ref to if_ixml_element.
+        data lo_ostream type ref to if_ixml_ostream.
+        data lo_renderer type ref to if_ixml_renderer.
 
-          lo_node_r_child_t ?= lo_node_si_child->find_from_name( 't' ).              " extract the <t>...</t> part of each <r>-tag
-          IF lo_node_r_child_t IS BOUND.
-            lv_node_value = lo_node_r_child_t->get_value( ).
-            CONCATENATE <lv_shared_string> lv_node_value INTO <lv_shared_string> RESPECTING BLANKS.
-          ENDIF.
-
-          lo_node_si_child ?= lo_node_si_child->get_next( ).
-
-        ENDWHILE.
+        lo_xml = cl_ixml=>create( ).
+        lo_document = lo_xml->create_document( ).
+        lo_elem ?= lo_node_si->clone( ).
+        lo_document->append_child( lo_elem ).
+        lo_stream_factory = lo_xml->create_stream_factory( ).
+        lo_ostream = lo_stream_factory->create_ostream_cstring( <lv_shared_string> ).
+        lo_renderer = lo_xml->create_renderer( ostream = lo_ostream document = lo_document ).
+        lo_renderer->render( ).
+        <lv_shared_string> = <lv_shared_string>+1. " в первый символ FFFF записывается
       ENDIF.
     ENDIF.
 
     lo_node_si ?= lo_node_si->get_next( ).
   ENDWHILE.
+
 
   endmethod.
 

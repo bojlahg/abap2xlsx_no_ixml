@@ -112,8 +112,8 @@
               <tt:attribute name="hidden"       value-ref="HIDDEN"       />
             </tt:cond>
             <tt:cond check="not-initial(CUSTOMHEIGHT)">
-              <tt:attribute name="customHeight" value-ref="CUSTOMHIGHT"  />
-              <tt:attribute name="ht"           value-ref="HIGHT"        />
+              <tt:attribute name="customHeight" value-ref="CUSTOMHEIGHT"  />
+              <tt:attribute name="ht"           value-ref="HEIGHT"        />
             </tt:cond>
             <tt:cond check="not-initial(COLLAPSED)">
               <tt:attribute name="collapsed"    value-ref="COLLAPSED"    />

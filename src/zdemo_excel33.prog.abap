@@ -35,7 +35,7 @@ START-OF-SELECTION.
   lo_worksheet = lo_excel->get_active_worksheet( ).
   lo_worksheet->set_title( ip_title = 'Internal table' ).
 
-  SELECT * UP TO 2 ROWS FROM t005t INTO TABLE lt_test.  "#EC CI_NOWHERE
+  SELECT * UP TO 3 ROWS FROM t005t INTO TABLE lt_test WHERE spras = 'E' ORDER BY land1.  "#EC CI_NOWHERE
 
   CREATE OBJECT lo_converter.
 
@@ -59,6 +59,13 @@ START-OF-SELECTION.
   lo_worksheet->get_cell( EXPORTING
                              ip_column    = 'C'
                              ip_row       = 2
+                          IMPORTING
+                             ep_value     = l_cell_value ).
+  lo_autofilter->set_value( i_column = 3
+                            i_value  = l_cell_value ).
+  lo_worksheet->get_cell( EXPORTING
+                             ip_column    = 'C'
+                             ip_row       = 3
                           IMPORTING
                              ep_value     = l_cell_value ).
   lo_autofilter->set_value( i_column = 3

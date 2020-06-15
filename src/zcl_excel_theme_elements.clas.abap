@@ -6,6 +6,8 @@ class ZCL_EXCEL_THEME_ELEMENTS definition
   global friends ZCL_EXCEL_THEME .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME_ELEMENTS
+*"* do not include other source files here!!!
 
   constants C_COLOR_SCHEME type STRING value 'clrScheme'. "#EC NOTEXT
   constants C_FONT_SCHEME type STRING value 'fontScheme'. "#EC NOTEXT
@@ -18,7 +20,7 @@ public section.
       !IO_ELEMENTS type ref to IF_IXML_ELEMENT .
   methods BUILD_XML
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
 protected section.
 
   data COLOR_SCHEME type ref to ZCL_EXCEL_THEME_COLOR_SCHEME .
@@ -32,21 +34,15 @@ ENDCLASS.
 CLASS ZCL_EXCEL_THEME_ELEMENTS IMPLEMENTATION.
 
 
-method build_xml.
-    data: lo_theme_element type ref to if_ixml_element.
-    data: lo_theme type ref to if_ixml_element.
-    check io_document is bound.
-    lo_theme ?= io_document->get_root_element( ).
-    if lo_theme is bound.
-      lo_theme_element ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix
-                                                                 name   = c_theme_elements
-                                                              parent = lo_theme ).
+METHOD build_xml.
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_theme_elements }>| ).
 
-      color_scheme->build_xml( io_document = io_document ).
-      font_scheme->build_xml( io_document = io_document ).
-      fmt_scheme->build_xml( io_document = io_document ).
-    endif.
-  endmethod.
+  color_scheme->build_xml( lo_ostream ).
+  font_scheme->build_xml( lo_ostream ).
+  fmt_scheme->build_xml( lo_ostream ).
+
+  lo_ostream->write_string( |</{ zcl_excel_theme=>c_theme_prefix }:{ c_theme_elements }>| ).
+ENDMETHOD.
 
 
 method constructor.

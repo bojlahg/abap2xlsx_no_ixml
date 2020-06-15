@@ -36,7 +36,7 @@ START-OF-SELECTION.
 
   CALL METHOD cl_gui_frontend_services=>gui_upload
     EXPORTING
-      filename                = 'c:\Program Files\SAP\FrontEnd\SAPgui\wwi\graphics\W_bio.bmp'
+      filename                = 'c:\Program Files (x86)\SAP\FrontEnd\SAPgui\bitmap\s_b_akti.bmp'
       filetype                = 'BIN'
     IMPORTING
       filelength              = lv_len
@@ -120,8 +120,20 @@ START-OF-SELECTION.
     " another drawing from a XSTRING read from a file
     lo_worksheet->set_cell( ip_column = 'B' ip_row = 18 ip_value = 'Mime repository (by default Question mark in standard Web Dynpro WDT_QUIZ)' ).
     lo_drawing = lo_excel->add_new_drawing( ).
-    lo_drawing->set_position( ip_from_row = 19
-                              ip_from_col = 'B' ).
+*    lo_drawing->set_position( ip_from_row = 19
+*                              ip_from_col = 'B' ).
+
+    DATA: drfrom TYPE ZEXCEL_DRAWING_LOCATION,
+          drto TYPE ZEXCEL_DRAWING_LOCATION.
+
+    drfrom-col = 3.
+    drto-col = 6.
+    drfrom-row = 19.
+    drto-row = 27.
+
+    lo_drawing->set_position2( ip_from = drfrom
+                               ip_to = drto ).
+
     lo_drawing->set_media_mime( ip_io       = ls_io
                                 ip_width = 126
                                 ip_height = 145 ).

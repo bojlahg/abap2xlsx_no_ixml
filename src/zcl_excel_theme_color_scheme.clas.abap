@@ -7,6 +7,8 @@ class ZCL_EXCEL_THEME_COLOR_SCHEME definition
                  ZCL_EXCEL_THEME_ELEMENTS .
 
 public section.
+*"* public components of class ZCL_EXCEL_THEME_COLOR_SCHEME
+*"* do not include other source files here!!!
 
   types T_SRGB type STRING .
   types:
@@ -50,7 +52,7 @@ public section.
       value(IV_SYSCOLORLAST) type T_SRGB .
   methods BUILD_XML
     importing
-      !IO_DOCUMENT type ref to IF_IXML_DOCUMENT .
+      !LO_OSTREAM type ref to IF_IXML_OSTREAM .
   methods CONSTRUCTOR .
   methods SET_NAME
     importing
@@ -85,224 +87,45 @@ ENDCLASS.
 CLASS ZCL_EXCEL_THEME_COLOR_SCHEME IMPLEMENTATION.
 
 
-method build_xml.
-    data: lo_scheme_element type ref to if_ixml_element.
-    data: lo_color type ref to if_ixml_element.
-    data: lo_syscolor type ref to if_ixml_element.
-    data: lo_srgb type ref to if_ixml_element.
-    data: lo_elements type ref to if_ixml_element.
+METHOD build_xml.
+  DEFINE add_color.
+*   &1 - name
+*   &2 - color
 
-    check io_document is bound.
-    lo_elements ?= io_document->find_from_name_ns( name   = zcl_excel_theme=>c_theme_elements ).
-    if lo_elements is bound.
-      lo_scheme_element ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix
-                                                                  name   = zcl_excel_theme_elements=>c_color_scheme
-                                                               parent = lo_elements ).
-      lo_scheme_element->set_attribute( name = c_name value = name ).
+    lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ &1 }>| ).
 
-      "! Adding colors to scheme
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix
-                                                                  name   = c_dark1
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if dark1-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = dark1-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = dark1-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = dark1-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
+    IF &2-srgb IS NOT INITIAL.
+      lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_srgbcolor }| ).
+      lo_ostream->write_string( | { c_val }="{ &2-srgb }"/>| ).
+    ELSE.
+      lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ c_syscolor }| ).
+      lo_ostream->write_string( | { c_val }="{ &2-syscolor-val }"| ).
+      lo_ostream->write_string( | { c_lastclr }="{ &2-syscolor-lastclr }"/>| ).
+    ENDIF.
 
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_light1
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if light1-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = light1-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = light1-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = light1-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
+    lo_ostream->write_string( |</{ zcl_excel_theme=>c_theme_prefix }:{ &1 }>| ).
+
+  END-OF-DEFINITION.
 
 
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_dark2
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if dark2-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = dark2-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = dark2-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = dark2-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
+  lo_ostream->write_string( |<{ zcl_excel_theme=>c_theme_prefix }:{ zcl_excel_theme_elements=>c_color_scheme }| ).
+  lo_ostream->write_string( | { c_name }="{ name }">| ).
 
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_light2
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if light2-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = light2-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = light2-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = light2-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
+  add_color c_dark1 dark1.
+  add_color c_light1 light1.
+  add_color c_dark2 dark2.
+  add_color c_light2 light2.
+  add_color c_accent1 accent1.
+  add_color c_accent2 accent2.
+  add_color c_accent3 accent3.
+  add_color c_accent4 accent4.
+  add_color c_accent5 accent5.
+  add_color c_accent6 accent6.
+  add_color c_hlink hlink.
+  add_color c_folhlink folhlink.
 
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_accent1
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if accent1-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = accent1-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = accent1-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = accent1-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_accent2
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if accent2-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = accent2-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = accent2-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = accent2-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_accent3
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if accent3-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = accent3-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = accent3-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = accent3-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_accent4
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if accent4-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = accent4-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = accent4-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = accent4-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_accent5
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if accent5-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = accent5-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = accent5-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = accent5-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_accent6
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if accent6-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = accent6-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = accent6-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = accent6-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_hlink
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if hlink-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = hlink-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = hlink-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = hlink-syscolor-lastclr ).
-        endif.
-        clear: lo_color, lo_srgb, lo_syscolor.
-      endif.
-
-      lo_color ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_folhlink
-                                                      parent = lo_scheme_element ).
-      if lo_color is bound.
-        if folhlink-srgb is not initial.
-          lo_srgb ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_srgbcolor
-                                                         parent = lo_color ).
-          lo_srgb->set_attribute( name = c_val value = folhlink-srgb ).
-        else.
-          lo_syscolor ?= io_document->create_simple_element_ns( prefix = zcl_excel_theme=>c_theme_prefix  name   = c_syscolor
-                                                          parent = lo_color ).
-          lo_syscolor->set_attribute( name = c_val value = folhlink-syscolor-val ).
-          lo_syscolor->set_attribute( name = c_lastclr value = folhlink-syscolor-lastclr ).
-        endif.
-      endif.
-
-
-    endif.
-  endmethod.                    "build_xml
+  lo_ostream->write_string( |</{ zcl_excel_theme=>c_theme_prefix }:{ zcl_excel_theme_elements=>c_color_scheme }>| ).
+ENDMETHOD.                    "build_xml
 
 
 method constructor.
