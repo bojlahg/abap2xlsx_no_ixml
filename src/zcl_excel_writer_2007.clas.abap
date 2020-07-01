@@ -9676,6 +9676,7 @@ METHOD create_xl_workbook.
     " issue 163 >>>
     lo_worksheet ?= lo_iterator->if_object_collection_iterator~get_next( ).
     lo_iterator_range = lo_worksheet->get_ranges_iterator( ).
+    lv_syindex = sy-index - 1.
     WHILE lo_iterator_range->if_object_collection_iterator~has_next( ) EQ abap_true.
       " range node
 *      lo_sub_element = lo_document->create_simple_element_ns( name   = lc_xml_node_definedname
@@ -9693,7 +9694,7 @@ METHOD create_xl_workbook.
 
 *      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid           "del #235 Repeat rows/cols - EXCEL starts couting from zero
 *                                        value = lv_xml_node_ridx_id ).             "del #235 Repeat rows/cols - and needs absolute referencing to localSheetId
-      lv_value   = lv_syindex - 1.                                                  "ins #235 Repeat rows/cols
+      lv_value = lv_syindex.                                                  "ins #235 Repeat rows/cols
       CONDENSE lv_value NO-GAPS.                                                    "ins #235 Repeat rows/cols
 *      lo_sub_element->set_attribute_ns( name  = lc_xml_attr_localsheetid
 *                                        value = lv_value ).
@@ -9702,7 +9703,7 @@ METHOD create_xl_workbook.
 
       lv_value = lo_range->get_value( ).
 
-      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+      lo_ostream->write_string( |{ zcl_excel_common=>escape_xml_text( lv_value ) }| ).
       lo_ostream->write_string( |</{ lc_xml_node_definedname }>| ).
 
 *      lo_sub_element->set_value( value = lv_value ).
@@ -9732,7 +9733,7 @@ METHOD create_xl_workbook.
 
     lv_value = lo_range->get_value( ).
 
-    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+    lo_ostream->write_string( |{ zcl_excel_common=>escape_xml_text( lv_value ) }| ).
 
     lo_ostream->write_string( |</{ lc_xml_node_definedname }>| ).
 
@@ -9774,7 +9775,7 @@ METHOD create_xl_workbook.
         lo_ostream->write_string( | { lc_xml_attr_hidden }="{ lv_value }">| ).
         lv_value = lo_autofilter->get_filter_reference( ).
 *        lo_sub_element->set_value( value = lv_value ).
-        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml( lv_value ) }| ).
+        lo_ostream->write_string( |{ zcl_excel_common=>escape_xml_text( lv_value ) }| ).
         lo_ostream->write_string( |</{ lc_xml_node_definedname }>| ).
 
 *        lo_element_range->append_child( new_child = lo_sub_element ). " range node

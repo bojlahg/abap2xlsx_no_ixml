@@ -66,6 +66,11 @@ public section.
       !I_PWD type ZEXCEL_AES_PASSWORD
     returning
       value(R_ENCRYPTED_PWD) type ZEXCEL_AES_PASSWORD .
+  class-methods ESCAPE_XML_TEXT
+    importing
+      !INSTR type STRING
+    returning
+      value(RVAL) type STRING .
   class-methods ESCAPE_XML
     importing
       !INSTR type STRING
@@ -755,6 +760,8 @@ method ESCAPE_STRING.
   IF sy-subrc = 0.
     REPLACE ALL OCCURRENCES OF `'` IN lv_value WITH `''`.
     CONCATENATE `'` lv_value `'` INTO lv_value .
+  ELSE.
+    CONCATENATE `'` lv_value `'` INTO lv_value .
   ENDIF.
 
   ep_escaped_value = lv_value.
@@ -764,6 +771,11 @@ endmethod.
 
 METHOD escape_xml.
   rval = escape(  val = instr format = cl_abap_format=>e_html_attr ).
+ENDMETHOD.
+
+
+METHOD escape_xml_text.
+  rval = escape(  val = instr format = cl_abap_format=>e_xml_text ).
 ENDMETHOD.
 
 
@@ -1538,7 +1550,8 @@ method UNESCAPE_STRING.
 *--------------------------------------------------------------------*
 * Remove leading and trailing '
 *--------------------------------------------------------------------*
-  REPLACE REGEX `^'(.*)'$` IN ev_unescaped_string WITH '$1'.
+*  REPLACE REGEX `^'(.*)'$` IN ev_unescaped_string WITH '$1'.
+  REPLACE REGEX `^'(.*)'.*$` IN ev_unescaped_string WITH '$1'.
   IF sy-subrc <> 0.
     lv_errormessage = 'Input not properly escaped - &'(002).
     zcx_excel=>raise_text( lv_errormessage ).
