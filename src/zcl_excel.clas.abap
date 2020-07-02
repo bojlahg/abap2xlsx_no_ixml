@@ -3,9 +3,9 @@ class ZCL_EXCEL definition
   create public .
 
 public section.
-
 *"* public components of class ZCL_EXCEL
 *"* do not include other source files here!!!
+
   interfaces ZIF_EXCEL_BOOK_PROPERTIES .
   interfaces ZIF_EXCEL_BOOK_PROTECTION .
   interfaces ZIF_EXCEL_BOOK_VBA_PROJECT .
@@ -146,17 +146,34 @@ public section.
   methods SET_THEME
     importing
       !IO_THEME type ref to ZCL_EXCEL_THEME .
+  methods SORT_WORKSHEETS_BY_TITLE .
+  class-methods COPY_RANGE
+    importing
+      value(IO_SOURCE) type ref to ZCL_EXCEL_WORKSHEET
+      value(IO_DEST) type ref to ZCL_EXCEL_WORKSHEET
+      !IV_COL_SOURCE type INT4
+      !IV_COL_DEST type INT4
+      !IV_ROW_SOURCE type INT4
+      !IV_ROW_DEST type INT4
+      !IV_COL_COUNT type INT4 default 1
+      !IV_ROW_COUNT type INT4 default 1
+      !IV_COPY_COL_WIDTH type FLAG optional
+      !IV_COPY_ROW_HEIGHT type FLAG optional .
+  class-methods COPY_WORKSHEET
+    importing
+      !IO_DEST type ref to ZCL_EXCEL_WORKSHEET
+      !IO_SRC type ref to ZCL_EXCEL_WORKSHEET .
 protected section.
 
   data WORKSHEETS type ref to ZCL_EXCEL_WORKSHEETS .
 private section.
+*"* private components of class ZCL_EXCEL
+*"* do not include other source files here!!!
 
   constants VERSION type CHAR10 value '7.0.6'. "#EC NOTEXT
   data AUTOFILTERS type ref to ZCL_EXCEL_AUTOFILTERS .
   data CHARTS type ref to ZCL_EXCEL_DRAWINGS .
   data DEFAULT_STYLE type ZEXCEL_CELL_STYLE .
-*"* private components of class ZCL_EXCEL
-*"* do not include other source files here!!!
   data DRAWINGS type ref to ZCL_EXCEL_DRAWINGS .
   data RANGES type ref to ZCL_EXCEL_RANGES .
   data STYLES type ref to ZCL_EXCEL_STYLES .
@@ -307,6 +324,123 @@ method CONSTRUCTOR.
   lo_style->fill->filltype = zcl_excel_style_fill=>c_fill_pattern_gray125.
 
   endmethod.
+
+
+METHOD copy_range.
+  DATA lv_col_dest TYPE int4.
+  DATA lv_col_source TYPE int4.
+  DATA lv_row_dest TYPE int4.
+  DATA lv_row_source TYPE int4.
+
+  DATA lv_guid TYPE zexcel_cell_style.
+  DATA lv_data_type TYPE zexcel_cell_data_type.
+  DATA lv_value TYPE string.
+
+  DATA lt_merge TYPE STANDARD TABLE OF string.
+  DATA l_merge TYPE string.
+
+  DATA lv_merge_col_from_c TYPE zexcel_cell_column_alpha.
+  DATA lv_merge_col_to_c TYPE zexcel_cell_column_alpha.
+  DATA lv_merge_col_from TYPE int4.
+  DATA lv_merge_col_to TYPE int4.
+  DATA lv_merge_row_from TYPE int4.
+  DATA lv_merge_row_to TYPE int4.
+
+  DO iv_col_count TIMES.
+    lv_col_source = iv_col_source + sy-index - 1.
+    lv_col_dest = iv_col_dest + sy-index - 1.
+    DO iv_row_count TIMES.
+      lv_row_source = iv_row_source + sy-index - 1.
+      lv_row_dest = iv_row_dest + sy-index - 1.
+
+      io_source->get_cell( EXPORTING
+                              ip_column = lv_col_source
+                              ip_row = lv_row_source
+                           IMPORTING
+                             ep_guid = lv_guid
+                             ep_value = lv_value
+                             ep_data_type = lv_data_type ).
+      io_dest->set_cell( ip_column = lv_col_dest
+                         ip_row = lv_row_dest
+                         ip_style = lv_guid
+                         ip_value = lv_value
+                         ip_data_type = lv_data_type ).
+    ENDDO.
+  ENDDO.
+
+  " Cell merges
+  lt_merge = io_source->get_merge( ).
+  LOOP AT lt_merge INTO l_merge.
+    zcl_excel_common=>convert_range2column_a_row( EXPORTING i_range = l_merge
+                                                  IMPORTING e_column_start = lv_merge_col_from_c
+                                                            e_column_end = lv_merge_col_to_c
+                                                            e_row_start = lv_merge_row_from
+                                                            e_row_end = lv_merge_row_to ).
+    lv_merge_col_from = zcl_excel_common=>convert_column2int( lv_merge_col_from_c ).
+    lv_merge_col_to = zcl_excel_common=>convert_column2int( lv_merge_col_to_c ).
+
+    " Merge only if all range inside copy range
+    IF lv_merge_col_from >= iv_col_source
+      AND lv_merge_col_to <= iv_col_source + iv_col_count - 1
+      AND lv_merge_row_from >= iv_row_source
+      AND lv_merge_row_to <= iv_row_source + iv_row_count - 1.
+
+      io_dest->set_merge( ip_column_start = lv_merge_col_from + iv_col_dest - iv_col_source
+                          ip_column_end = lv_merge_col_to + iv_col_dest - iv_col_source
+                          ip_row = lv_merge_row_from + iv_row_dest - iv_row_source
+                          ip_row_to = lv_merge_row_to + iv_row_dest - iv_row_source ).
+    ENDIF.
+  ENDLOOP.
+
+  IF iv_copy_col_width IS NOT INITIAL.
+    DO iv_col_count TIMES.
+      io_dest->get_column( iv_col_dest + sy-index - 1 )->set_width(
+        io_source->get_column( iv_col_source + sy-index - 1 )->get_width( ) ).
+    ENDDO.
+  ENDIF.
+
+  IF iv_copy_row_height IS NOT INITIAL.
+    DO iv_row_count TIMES.
+      io_dest->get_row( iv_row_dest + sy-index - 1 )->set_row_height(
+        io_source->get_row( iv_row_source + sy-index - 1 )->get_row_height( ) ).
+    ENDDO.
+  ENDIF.
+ENDMETHOD.
+
+
+METHOD copy_worksheet.
+  DATA lv_max_row TYPE i.
+  DATA lv_max_col TYPE i.
+
+  FIELD-SYMBOLS: <ls_content> TYPE zexcel_s_cell_data.
+
+  LOOP AT io_src->sheet_content ASSIGNING <ls_content>.
+    lv_max_row = nmax( val1 = lv_max_row val2 = <ls_content>-cell_row ).
+    lv_max_col = nmax( val1 = lv_max_col val2 = <ls_content>-cell_column ).
+  ENDLOOP.
+
+  LOOP AT io_dest->sheet_content ASSIGNING <ls_content>.
+    lv_max_row = nmax( val1 = lv_max_row val2 = <ls_content>-cell_row ).
+    lv_max_col = nmax( val1 = lv_max_col val2 = <ls_content>-cell_column ).
+  ENDLOOP.
+
+  TRY.
+    io_dest->set_tabcolor( io_src->get_tabcolor( ) ).
+
+    zcl_excel=>copy_range(
+      EXPORTING
+        io_source          = io_src
+        io_dest            = io_dest
+        iv_col_source      = 1
+        iv_col_dest        = 1
+        iv_row_source      = 1
+        iv_row_dest        = 1
+        iv_col_count       = lv_max_col
+        iv_row_count       = lv_max_row
+        iv_copy_col_width  = abap_true
+        iv_copy_row_height = abap_true ).
+  ENDTRY.
+ENDMETHOD.
 
 
 METHOD delete_worksheet.
@@ -617,6 +751,34 @@ method SET_DEFAULT_STYLE.
 
 method SET_THEME.
   theme = io_theme.
+endmethod.
+
+
+METHOD sort_worksheets_by_title.
+  TYPES: BEGIN OF ts_ws,
+           title TYPE zexcel_sheet_title,
+           worksheet TYPE REF TO zcl_excel_worksheet,
+         END OF ts_ws,
+         tt_ws TYPE TABLE OF ts_ws.
+  DATA: ls_ws TYPE ts_ws,
+        lt_ws TYPE tt_ws,
+        lo_worksheet TYPE REF TO zcl_excel_worksheet,
+        lo_iterator TYPE REF TO cl_object_collection_iterator.
+
+  lo_iterator = get_worksheets_iterator( ).
+  WHILE lo_iterator->has_next( ) = abap_true.
+    lo_worksheet ?= lo_iterator->get_next( ).
+    ls_ws-title = lo_worksheet->get_title( ).
+    ls_ws-worksheet = lo_worksheet.
+    APPEND ls_ws TO lt_ws.
+  ENDWHILE.
+
+  SORT lt_ws BY title.
+
+  worksheets->clear( ).
+  LOOP AT lt_ws INTO ls_ws.
+    worksheets->add( ls_ws-worksheet ).
+  ENDLOOP.
 endmethod.
 
 

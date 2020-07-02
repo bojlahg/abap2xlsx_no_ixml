@@ -258,6 +258,7 @@ public section.
       !EP_STYLE type ref to ZCL_EXCEL_STYLE
       !EP_GUID type ZEXCEL_CELL_STYLE
       !EP_FORMULA type ZEXCEL_CELL_FORMULA
+      !EP_DATA_TYPE type ZEXCEL_CELL_DATA_TYPE
     raising
       ZCX_EXCEL .
   methods GET_COLUMN
@@ -3874,6 +3875,7 @@ CLASS ZCL_EXCEL_WORKSHEET IMPLEMENTATION.
     ep_value    = ls_sheet_content-cell_value.
     ep_guid     = ls_sheet_content-cell_style.       " issue 139 - added this to be used for columnwidth calculation
     ep_formula  = ls_sheet_content-cell_formula.
+    ep_data_type = ls_sheet_content-data_type.
 
     " Addition to solve issue #120, contribution by Stefan Schmöcker
     DATA: style_iterator TYPE REF TO cl_object_collection_iterator,

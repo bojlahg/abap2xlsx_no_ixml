@@ -77,11 +77,11 @@ method GET.
   endmethod.
 
 
-method GET_ITERATOR.
+METHOD get_iterator.
 
   eo_iterator ?= worksheets->if_object_collection~get_iterator( ).
 
-  endmethod.
+ENDMETHOD.
 
 
 method IS_EMPTY.
